@@ -107,8 +107,22 @@ jobs:
       - name: Terraform Plan
         id: plan
         working-directory: terraform/environments/${{ matrix.environment }}
-        run: terraform plan -no-color -out=tfplan
+        run: |
+          terraform plan -no-color -out=tfplan > plan_output.txt 2>&1 || true
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
         continue-on-error: true
+
+      - name: Save Plan Output
+        if: always()
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          if [ -f plan_output.txt ]; then
+            # Limit to first 60000 characters to avoid issues
+            head -c 60000 plan_output.txt > plan_output_truncated.txt
+            if [ $(wc -c < plan_output.txt) -gt 60000 ]; then
+              echo -e "\n\n... (output truncated, see workflow logs for full plan)" >> plan_output_truncated.txt
+            fi
+          fi
 
       - name: Save Plan
         if: steps.plan.outcome == 'success'
@@ -151,16 +165,22 @@ jobs:
       - name: Update Pull Request
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
-        env:
-          PLAN: "${{ steps.plan.outputs.stdout }}"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const plan = process.env.PLAN;
-            const maxLength = 65000; // GitHub comment limit
-            const truncated = plan.length > maxLength
-              ? plan.substring(0, maxLength) + '\n\n... (truncated - plan too large, check workflow logs for full output)'
-              : plan;
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read plan from file
+            const planFile = 'terraform/environments/${{ matrix.environment }}/plan_output_truncated.txt';
+            let plan = 'Plan output not available';
+            try {
+              if (fs.existsSync(planFile)) {
+                plan = fs.readFileSync(planFile, 'utf8');
+              }
+            } catch (error) {
+              plan = `Error reading plan: ${error.message}`;
+            }
 
             const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
             #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
@@ -172,7 +192,7 @@ jobs:
             <details><summary>Show Plan for ${{ matrix.environment }}</summary>
 
             \`\`\`terraform
-            ${truncated}
+            ${plan}
             \`\`\`
 
             </details>
