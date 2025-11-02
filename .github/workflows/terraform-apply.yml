@@ -1,12 +1,16 @@
 name: Terraform Apply
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform-apply.yml'
+  # Disabled auto-deploy on push to prevent accidental infrastructure creation
+  # Uncomment the lines below to enable automatic deployment on push to main
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'terraform/**'
+  #     - '.github/workflows/terraform-apply.yml'
+
+  # Manual deployment only
   workflow_dispatch:
     inputs:
       environment:
@@ -35,12 +39,8 @@ jobs:
       - name: Set environment
         id: set-env
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
-          else
-            # Auto deploy: dev on push to main
-            echo "environments=[\"dev\"]" >> $GITHUB_OUTPUT
-          fi
+          # Only manual deployment is allowed
+          echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
 
   terraform-apply:
     name: Terraform Apply
