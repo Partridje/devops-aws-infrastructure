@@ -1,0 +1,192 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-apply.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: eu-north-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  determine-environment:
+    name: Determine Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.set-env.outputs.environments }}
+    steps:
+      - name: Set environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
+          else
+            # Auto deploy: dev on push to main
+            echo "environments=[\"dev\"]" >> $GITHUB_OUTPUT
+          fi
+
+  terraform-apply:
+    name: Terraform Apply
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{ fromJson(needs.determine-environment.outputs.environments) }}
+      max-parallel: 1  # Deploy one environment at a time
+
+    environment:
+      name: ${{ matrix.environment }}
+      url: ${{ steps.terraform-output.outputs.alb_url }}
+
+    steps:
+      #####################################
+      # Checkout Code
+      #####################################
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      #####################################
+      # Configure AWS Credentials (OIDC)
+      #####################################
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      #####################################
+      # Setup Terraform
+      #####################################
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false  # Required for output parsing
+
+      #####################################
+      # Terraform Init
+      #####################################
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: terraform init
+
+      #####################################
+      # Terraform Plan
+      #####################################
+      - name: Terraform Plan
+        id: plan
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          terraform plan -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.environment }}-${{ github.sha }}
+          path: |
+            terraform/environments/${{ matrix.environment }}/tfplan
+            terraform/environments/${{ matrix.environment }}/plan.txt
+          retention-days: 30
+
+      #####################################
+      # Terraform Apply
+      #####################################
+      - name: Terraform Apply
+        id: apply
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: terraform apply -auto-approve tfplan
+
+      #####################################
+      # Get Outputs
+      #####################################
+      - name: Terraform Output
+        id: terraform-output
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          echo "alb_url=$(terraform output -raw alb_url)" >> $GITHUB_OUTPUT
+          echo "dashboard_url=$(terraform output -raw cloudwatch_dashboard_url)" >> $GITHUB_OUTPUT
+          terraform output -json > outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-${{ matrix.environment }}
+          path: terraform/environments/${{ matrix.environment }}/outputs.json
+
+      #####################################
+      # Smoke Tests
+      #####################################
+      - name: Wait for deployment
+        run: sleep 60
+
+      - name: Run Smoke Tests
+        id: smoke-test
+        run: |
+          ALB_URL="${{ steps.terraform-output.outputs.alb_url }}"
+
+          echo "Testing $ALB_URL"
+
+          # Test health endpoint
+          echo "Testing /health..."
+          curl -f "$ALB_URL/health" || exit 1
+
+          # Test root endpoint
+          echo "Testing /..."
+          curl -f "$ALB_URL/" || exit 1
+
+          echo "Smoke tests passed!"
+
+      #####################################
+      # Notify on Failure
+      #####################################
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Terraform apply failed for ${{ matrix.environment }}"
+          echo "Check the logs and consider rolling back if necessary"
+
+      #####################################
+      # Job Summary
+      #####################################
+      - name: Create Job Summary
+        if: always()
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## Terraform Apply Summary
+
+          **Environment:** \`${{ matrix.environment }}\`
+          **Status:** ${{ job.status }}
+          **Commit:** \`${{ github.sha }}\`
+          **Actor:** @${{ github.actor }}
+
+          ### Deployment Details
+          - **ALB URL:** ${{ steps.terraform-output.outputs.alb_url }}
+          - **Dashboard:** ${{ steps.terraform-output.outputs.dashboard_url }}
+
+          ### Smoke Tests
+          - Health Check: ${{ steps.smoke-test.outcome }}
+
+          ### Next Steps
+          1. Verify application at the ALB URL
+          2. Check CloudWatch dashboard
+          3. Monitor logs and metrics
+          4. Confirm SNS email subscription (if first deployment)
+          EOF

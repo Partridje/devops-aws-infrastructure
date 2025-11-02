@@ -1,0 +1,59 @@
+#####################################
+# Development Environment - Example Variables
+#####################################
+# Copy this file to terraform.tfvars and update with your values
+# cp terraform.tfvars.example terraform.tfvars
+#####################################
+
+# Project configuration
+project_name = "demo-app"
+environment  = "dev"
+aws_region   = "eu-north-1"
+
+# Network configuration
+vpc_cidr = "10.0.0.0/16"
+
+# Application configuration
+application_port = 5001
+app_version      = "latest"
+
+# Database configuration
+database_name = "appdb"
+rds_port      = 5432
+
+# Monitoring configuration
+# Add email addresses to receive alarm notifications
+alert_email_addresses = [
+  # "devops@example.com",
+  # "team@example.com"
+]
+
+# Security configuration - YOUR IP ADDRESS
+# ⚠️ IMPORTANT: Most ISPs use DYNAMIC IP - it changes daily/weekly!
+#
+# Get your current public IP:
+#   curl ifconfig.me
+#
+# Choose one option:
+#
+# Option 1: Allow ALL (testing only, 2-3 hours, then destroy)
+# allowed_cidr_blocks = ["0.0.0.0/0"]
+#
+# Option 2: Your current IP (recommended, but update when it changes)
+# allowed_cidr_blocks = ["203.0.113.45/32"]  # Replace with your IP
+#
+# Option 3: Your ISP's IP range (find via: whois $(curl -s ifconfig.me))
+# allowed_cidr_blocks = ["185.123.0.0/16"]
+#
+# Uncomment and choose one:
+# allowed_cidr_blocks = ["YOUR_IP_HERE/32"]
+
+#####################################
+# Notes:
+#####################################
+# 1. Update the backend configuration in main.tf with your S3 bucket name
+# 2. Run ./scripts/setup-terraform-backend.sh before terraform init
+# 3. Ensure AWS credentials are configured (aws configure)
+# 4. This is a cost-optimized configuration for development
+# 5. Resources will cost approximately $84/month
+#####################################

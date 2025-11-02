@@ -1,0 +1,65 @@
+#####################################
+# Production Environment - Example Variables
+#####################################
+# Copy this file to terraform.tfvars and update with your values
+# cp terraform.tfvars.example terraform.tfvars
+#####################################
+
+# Project configuration
+project_name = "demo-app"
+environment  = "prod"
+aws_region   = "eu-north-1"
+
+# Network configuration
+# Use different CIDR than dev to allow VPC peering if needed
+vpc_cidr = "10.1.0.0/16"
+
+# Application configuration
+application_port = 5001
+app_version      = "1.0.0"  # Use specific version tags in production
+
+# ECR repository (update after creating ECR repository)
+ecr_repository_url = ""  # e.g., "123456789012.dkr.ecr.eu-north-1.amazonaws.com/demo-app"
+
+# SSL/TLS certificate (update after creating ACM certificate)
+certificate_arn = ""  # e.g., "arn:aws:acm:eu-north-1:123456789012:certificate/xxx"
+
+# Database configuration
+database_name = "appdb"
+rds_port      = 5432
+
+# Monitoring configuration
+# IMPORTANT: Add production alert recipients
+alert_email_addresses = [
+  # "devops@example.com",
+  # "oncall@example.com",
+  # "sre-team@example.com"
+]
+
+#####################################
+# Production Checklist:
+#####################################
+# [ ] Update backend configuration in main.tf with your S3 bucket name
+# [ ] Run ./scripts/setup-terraform-backend.sh
+# [ ] Create ECR repository and update ecr_repository_url
+# [ ] Create ACM certificate for your domain and update certificate_arn
+# [ ] Add production email addresses for alerts
+# [ ] Review and adjust instance types based on load testing
+# [ ] Configure Route53 DNS records after deployment
+# [ ] Enable AWS Backup for automated backups
+# [ ] Review VPC Flow Logs retention policy
+# [ ] Set up disaster recovery procedures
+# [ ] Document runbooks for common operations
+# [ ] Schedule security audits and compliance reviews
+#####################################
+
+#####################################
+# Cost Optimization Tips:
+#####################################
+# 1. Use Reserved Instances or Savings Plans for 30-60% discount
+# 2. Consider Graviton instances (t4g, m6g) for better price/performance
+# 3. Enable RDS storage autoscaling to avoid over-provisioning
+# 4. Use S3 lifecycle policies for log retention
+# 5. Review CloudWatch log retention settings
+# 6. Monitor and right-size instances based on actual usage
+#####################################
