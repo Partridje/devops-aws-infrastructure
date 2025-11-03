@@ -94,12 +94,15 @@ jobs:
       #####################################
       # Terraform Security Scan
       #####################################
-      - name: Run tfsec
-        id: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      - name: Run Trivy for Terraform
+        id: trivy
+        uses: aquasecurity/trivy-action@master
         with:
-          working_directory: terraform/
-          soft_fail: true
+          scan-type: 'config'
+          scan-ref: 'terraform/'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          format: 'table'
 
       #####################################
       # Terraform Plan

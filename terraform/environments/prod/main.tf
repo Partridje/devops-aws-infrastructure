@@ -266,3 +266,38 @@ module "monitoring" {
 
   tags = local.common_tags
 }
+
+#####################################
+# WAF Module
+#####################################
+
+module "waf" {
+  source = "../../modules/waf"
+
+  name_prefix = local.name_prefix
+  aws_region  = var.aws_region
+  alb_arn     = module.ec2.alb_arn
+
+  # Rate limiting (production: stricter limits)
+  rate_limit = var.waf_rate_limit
+
+  # IP management
+  ip_whitelist      = var.waf_ip_whitelist
+  blocked_countries = var.waf_blocked_countries
+
+  # Rule customization
+  excluded_rules = var.waf_excluded_rules
+
+  # Logging
+  enable_logging     = true
+  log_retention_days = 30
+
+  # Monitoring
+  create_cloudwatch_alarms   = true
+  blocked_requests_threshold = var.waf_blocked_requests_threshold
+  alarm_actions              = [module.monitoring.sns_topic_arn]
+
+  tags = local.common_tags
+
+  depends_on = [module.ec2]
+}

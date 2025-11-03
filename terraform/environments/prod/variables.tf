@@ -99,3 +99,37 @@ variable "alert_email_addresses" {
   type        = list(string)
   default     = []
 }
+
+#####################################
+# WAF Configuration
+#####################################
+
+variable "waf_rate_limit" {
+  description = "Maximum requests from single IP in 5 minutes"
+  type        = number
+  default     = 2000
+}
+
+variable "waf_ip_whitelist" {
+  description = "List of IP addresses to whitelist (CIDR notation)"
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_blocked_countries" {
+  description = "List of country codes to block (ISO 3166-1 alpha-2)"
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_excluded_rules" {
+  description = "List of AWS Managed Rules to exclude (count mode)"
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_blocked_requests_threshold" {
+  description = "Threshold for WAF blocked requests alarm"
+  type        = number
+  default     = 1000
+}

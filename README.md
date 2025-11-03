@@ -272,11 +272,12 @@ make destroy ENV=dev
 - **Network ACLs** for additional layer of defense
 - **VPC Flow Logs** for network traffic analysis
 - **NAT Gateways** for outbound internet access from private subnets
+- **AWS WAF** protection against OWASP Top 10, DDoS, and malicious IPs (production)
 
 ### Data Security
 - **Encryption at rest** for EBS volumes and RDS
-- **Encryption in transit** with TLS/SSL on ALB
-- **AWS Secrets Manager** for database credentials
+- **Encryption in transit** with TLS/SSL on ALB (HTTPS with ACM certificates)
+- **AWS Secrets Manager** for database credentials with rotation support
 - **KMS** for encryption key management
 - **No hardcoded credentials** in code or configuration
 
@@ -470,6 +471,13 @@ Add these secrets to GitHub repository:
 - **[docs/SECURITY.md](docs/SECURITY.md)** - Security best practices, compliance, and hardening
 - **[docs/PASSWORD_MANAGEMENT.md](docs/PASSWORD_MANAGEMENT.md)** - AWS managed passwords (ephemeral approach)
 - **[docs/SECRETS_ACCESS_CONTROL.md](docs/SECRETS_ACCESS_CONTROL.md)** - IAM policies, access control, monitoring
+
+### Configuration & Setup
+- **[docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md)** - SSL/TLS certificates and HTTPS configuration
+- **[docs/SNS_SETUP.md](docs/SNS_SETUP.md)** - Email alerts and notification configuration
+- **[docs/WAF_SETUP.md](docs/WAF_SETUP.md)** - Web Application Firewall configuration
+- **[docs/SECRETS_ROTATION.md](docs/SECRETS_ROTATION.md)** - RDS password rotation procedures
+- **[docs/SESSION_MANAGER.md](docs/SESSION_MANAGER.md)** - Secure EC2 access without SSH
 
 ### Component Documentation
 - **[app/README.md](app/README.md)** - Flask application documentation
