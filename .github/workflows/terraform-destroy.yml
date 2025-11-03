@@ -1,0 +1,132 @@
+name: Terraform Destroy
+
+on:
+  # Only manual destruction to prevent accidents
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy (type carefully!)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      confirmation:
+        description: 'Type "destroy" to confirm'
+        required: true
+        type: string
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: eu-north-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  validate-confirmation:
+    name: Validate Confirmation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirmation }}" != "destroy" ]; then
+            echo "❌ Confirmation failed! You must type 'destroy' exactly."
+            exit 1
+          fi
+          echo "✅ Confirmation validated"
+
+  terraform-destroy:
+    name: Terraform Destroy (${{ github.event.inputs.environment }})
+    needs: validate-confirmation
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-destroy
+
+    steps:
+      #####################################
+      # Checkout Code
+      #####################################
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      #####################################
+      # Configure AWS Credentials (OIDC)
+      #####################################
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      #####################################
+      # Setup Terraform
+      #####################################
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      #####################################
+      # Terraform Init
+      #####################################
+      - name: Terraform Init
+        working-directory: terraform/environments/${{ github.event.inputs.environment }}
+        run: terraform init
+
+      #####################################
+      # Show what will be destroyed
+      #####################################
+      - name: Terraform Plan Destroy
+        id: plan
+        working-directory: terraform/environments/${{ github.event.inputs.environment }}
+        run: |
+          echo "### Resources to be destroyed:" >> $GITHUB_STEP_SUMMARY
+          terraform plan -destroy -no-color | tee destroy-plan.txt
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -n 100 destroy-plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      #####################################
+      # Wait before destruction
+      #####################################
+      - name: Wait before destruction
+        run: |
+          echo "⏳ Waiting 30 seconds before destruction..."
+          echo "⚠️  This is your last chance to cancel!"
+          sleep 30
+
+      #####################################
+      # Terraform Destroy
+      #####################################
+      - name: Terraform Destroy
+        working-directory: terraform/environments/${{ github.event.inputs.environment }}
+        run: |
+          echo "🗑️  Starting infrastructure destruction for ${{ github.event.inputs.environment }}..."
+          terraform destroy -auto-approve -no-color
+
+      #####################################
+      # Summary
+      #####################################
+      - name: Destruction Summary
+        if: always()
+        run: |
+          echo "### 🗑️ Destruction Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All resources have been destroyed successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "💰 AWS costs for ${{ github.event.inputs.environment }} environment will stop accruing." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Destruction failed!** Some resources may still exist." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️  Check the logs and manually verify in AWS Console." >> $GITHUB_STEP_SUMMARY
+          fi
