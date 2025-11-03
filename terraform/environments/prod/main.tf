@@ -216,6 +216,11 @@ module "ec2" {
   enable_deletion_protection = true
   alb_idle_timeout           = 60
 
+  # HTTPS/SSL Configuration
+  certificate_arn       = var.certificate_arn
+  ssl_policy            = var.ssl_policy
+  enable_https_redirect = var.enable_https_redirect
+
   # Health checks
   health_check_path              = "/health"
   health_check_interval          = 30
