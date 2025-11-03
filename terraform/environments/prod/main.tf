@@ -289,13 +289,13 @@ module "waf" {
   excluded_rules = var.waf_excluded_rules
 
   # Logging
-  enable_logging      = true
-  log_retention_days  = 30
+  enable_logging     = true
+  log_retention_days = 30
 
   # Monitoring
-  create_cloudwatch_alarms    = true
-  blocked_requests_threshold  = var.waf_blocked_requests_threshold
-  alarm_actions               = [module.monitoring.sns_topic_arn]
+  create_cloudwatch_alarms   = true
+  blocked_requests_threshold = var.waf_blocked_requests_threshold
+  alarm_actions              = [module.monitoring.sns_topic_arn]
 
   tags = local.common_tags
 
