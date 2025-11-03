@@ -1,0 +1,129 @@
+# Dependabot Configuration
+# Automatically creates pull requests to keep dependencies up to date
+# Documentation: https://docs.github.com/en/code-security/dependabot
+
+version: 2
+updates:
+  #####################################
+  # Terraform Providers - Dev
+  #####################################
+  - package-ecosystem: "terraform"
+    directory: "/terraform/environments/dev"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Stockholm"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Partridje"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "dev"
+    commit-message:
+      prefix: "terraform(dev)"
+      include: "scope"
+    # Only update patch and minor versions automatically
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  #####################################
+  # Terraform Providers - Prod
+  #####################################
+  - package-ecosystem: "terraform"
+    directory: "/terraform/environments/prod"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Stockholm"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Partridje"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "prod"
+    commit-message:
+      prefix: "terraform(prod)"
+      include: "scope"
+    # Only update patch and minor versions for production
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  #####################################
+  # Python Dependencies (Flask App)
+  #####################################
+  - package-ecosystem: "pip"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Stockholm"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Partridje"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "python"
+      include: "scope"
+    # Allow all updates (will be caught by tests)
+    allow:
+      - dependency-type: "all"
+    # Group minor and patch updates together
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  #####################################
+  # Docker Base Images
+  #####################################
+  - package-ecosystem: "docker"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Stockholm"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "Partridje"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+
+  #####################################
+  # GitHub Actions Workflows
+  #####################################
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "Europe/Stockholm"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "Partridje"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    # Group all GitHub Actions updates
+    groups:
+      github-actions:
+        patterns:
+          - "*"
