@@ -27,6 +27,11 @@ plan: ## Run terraform plan
 	cd $(TERRAFORM_DIR) && terraform plan -out=tfplan
 
 apply: ## Apply terraform changes
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production deployments must go through CI/CD!$(NC)"; \
+		echo "$(YELLOW)Use GitHub Actions → Terraform Apply workflow instead$(NC)"; \
+		exit 1; \
+	fi
 	@echo "$(YELLOW)Applying infrastructure changes for $(ENV)...$(NC)"
 	@read -p "Are you sure? [y/N] " -n 1 -r; \
 	echo; \
@@ -42,6 +47,11 @@ apply-auto: ## Apply terraform changes without confirmation (CI/CD)
 	cd $(TERRAFORM_DIR) && terraform apply -auto-approve
 
 destroy: ## Destroy infrastructure
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production destruction must go through CI/CD!$(NC)"; \
+		echo "$(YELLOW)Use GitHub Actions → Terraform Destroy workflow instead$(NC)"; \
+		exit 1; \
+	fi
 	@echo "$(RED)Destroying infrastructure for $(ENV)...$(NC)"
 	@read -p "Are you ABSOLUTELY sure? Type '$(ENV)' to confirm: " -r; \
 	echo; \

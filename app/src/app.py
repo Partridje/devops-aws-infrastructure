@@ -379,7 +379,7 @@ def health():
         }
     }
 
-    # Check database connection
+    # Check database connection (non-blocking)
     try:
         if db_pool.pool:
             conn = db_pool.get_connection()
@@ -391,14 +391,14 @@ def health():
             health_status['checks']['database'] = 'ok'
         else:
             health_status['checks']['database'] = 'not_initialized'
-            health_status['status'] = 'degraded'
+            # Application is still healthy, just database not connected yet
     except Exception as e:
         health_status['checks']['database'] = f'error: {str(e)}'
-        health_status['status'] = 'unhealthy'
-        logger.error(f"Health check database error: {e}")
+        logger.warning(f"Health check database error: {e}")
 
-    status_code = 200 if health_status['status'] == 'healthy' else 503
-    return jsonify(health_status), status_code
+    # Return 200 even if database is not ready (app itself is healthy)
+    # Use /db endpoint for strict database health check
+    return jsonify(health_status), 200
 
 @app.route('/db')
 def db_check():
