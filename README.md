@@ -478,6 +478,7 @@ Add these secrets to GitHub repository:
 - **[docs/WAF_SETUP.md](docs/WAF_SETUP.md)** - Web Application Firewall configuration
 - **[docs/SECRETS_ROTATION.md](docs/SECRETS_ROTATION.md)** - RDS password rotation procedures
 - **[docs/SESSION_MANAGER.md](docs/SESSION_MANAGER.md)** - Secure EC2 access without SSH
+- **[docs/DEPENDABOT.md](docs/DEPENDABOT.md)** - Automatic dependency updates with Dependabot
 
 ### Component Documentation
 - **[app/README.md](app/README.md)** - Flask application documentation
