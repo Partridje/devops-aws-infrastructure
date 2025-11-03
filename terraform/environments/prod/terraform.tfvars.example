@@ -46,7 +46,31 @@ database_name = "appdb"
 rds_port      = 5432
 
 # Monitoring configuration
-# IMPORTANT: Add production alert recipients
+# ⚠️ CRITICAL: Production MUST have email alerts configured!
+# After running 'terraform apply', AWS will send confirmation emails to all addresses.
+# You MUST click "Confirm subscription" link in each email to receive alerts.
+#
+# See docs/SNS_SETUP.md for detailed setup instructions
+#
+# What you'll be notified about:
+#   - 🔴 Critical: Unhealthy instances, database failures, storage issues
+#   - 🟠 Warning: High CPU, slow response times, application errors
+#   - 📊 Events: EC2/RDS state changes, configuration updates
+#
+# Best practices:
+#   ✅ Use distribution lists (devops@example.com) for team notifications
+#   ✅ Include on-call rotation email
+#   ✅ Add backup notification method (Slack, PagerDuty)
+#   ✅ Confirm all subscriptions immediately after deployment
+#   ✅ Test alerts after initial setup
+#
+# Example:
+#   alert_email_addresses = [
+#     "devops@example.com",      # Main DevOps team
+#     "oncall@example.com",       # On-call rotation
+#     "sre-team@example.com"      # SRE team
+#   ]
+#
 alert_email_addresses = [
   # "devops@example.com",
   # "oncall@example.com",
@@ -56,18 +80,28 @@ alert_email_addresses = [
 #####################################
 # Production Checklist:
 #####################################
+# Pre-deployment:
 # [ ] Update backend configuration in main.tf with your S3 bucket name
 # [ ] Run ./scripts/setup-terraform-backend.sh
-# [ ] Create ECR repository and update ecr_repository_url
 # [ ] Create ACM certificate for your domain and update certificate_arn
-# [ ] Add production email addresses for alerts
-# [ ] Review and adjust instance types based on load testing
-# [ ] Configure Route53 DNS records after deployment
-# [ ] Enable AWS Backup for automated backups
-# [ ] Review VPC Flow Logs retention policy
-# [ ] Set up disaster recovery procedures
-# [ ] Document runbooks for common operations
-# [ ] Schedule security audits and compliance reviews
+# [ ] Add production email addresses for alert_email_addresses
+# [ ] Review and adjust instance types based on expected load
+#
+# Post-deployment (CRITICAL - Day 1):
+# [ ] Confirm ALL SNS email subscriptions (check inbox + spam!)
+# [ ] Test alerts with: aws cloudwatch set-alarm-state (see docs/SNS_SETUP.md)
+# [ ] Verify HTTPS access and certificate
+# [ ] Configure Route53 DNS records
+# [ ] Test application functionality end-to-end
+#
+# Post-deployment (Within first week):
+# [ ] Monitor CloudWatch alarms and adjust thresholds if needed
+# [ ] Document on-call procedures and runbooks
+# [ ] Set up Slack/PagerDuty integration for alerts (optional)
+# [ ] Enable AWS Backup for automated database backups
+# [ ] Review VPC Flow Logs and set appropriate retention
+# [ ] Schedule regular security audits and compliance reviews
+# [ ] Create disaster recovery and rollback procedures
 #####################################
 
 #####################################

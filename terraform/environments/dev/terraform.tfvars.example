@@ -37,7 +37,24 @@ database_name = "appdb"
 rds_port      = 5432
 
 # Monitoring configuration
-# Add email addresses to receive alarm notifications
+# ⚠️ IMPORTANT: You MUST confirm email subscriptions after deployment!
+# After running 'terraform apply', AWS will send confirmation emails to all addresses.
+# Click "Confirm subscription" link in each email to receive alerts.
+#
+# See docs/SNS_SETUP.md for detailed setup instructions
+#
+# What you'll be notified about:
+#   - Infrastructure issues (unhealthy hosts, database problems)
+#   - Performance degradation (high CPU, slow response times)
+#   - Application errors (from logs)
+#   - AWS events (EC2/RDS state changes)
+#
+# Recommended: Use distribution lists (devops@example.com) instead of individual emails
+#
+# Examples:
+#   alert_email_addresses = ["devops@example.com"]
+#   alert_email_addresses = ["dev-team@example.com", "john.doe@example.com"]
+#
 alert_email_addresses = [
   # "devops@example.com",
   # "team@example.com"
