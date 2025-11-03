@@ -27,7 +27,6 @@ provider "aws" {
       ManagedBy   = "Terraform"
       CostCenter  = "Engineering"
       Owner       = "DevOps"
-      Compliance  = "PCI-DSS"
     }
   }
 }
@@ -80,6 +79,23 @@ module "vpc" {
 }
 
 #####################################
+# ECR Module
+#####################################
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  repository_name      = "${local.name_prefix}-app"
+  image_tag_mutability = "IMMUTABLE" # Production should use immutable tags
+  scan_on_push         = true
+  max_image_count      = 30 # Keep more images in production
+  untagged_days        = 14
+  allowed_principals   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+
+  common_tags = local.common_tags
+}
+
+#####################################
 # Security Groups Module
 #####################################
 
@@ -124,46 +140,31 @@ module "rds" {
   # Instance configuration (production-sized)
   instance_class        = "db.t3.small"
   allocated_storage     = 100
-  max_allocated_storage = 1000
+  max_allocated_storage = 500
   storage_type          = "gp3"
 
   # High availability enabled
   multi_az = true
 
-  # Backup configuration
+  # Backup configuration (production-grade)
   backup_retention_period  = 30
   skip_final_snapshot      = false
   delete_automated_backups = false
 
-  # Monitoring (full monitoring)
+  # Monitoring (enhanced monitoring)
   enabled_monitoring_interval           = 60
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 
-  # Protection enabled
+  # Protection enabled for production
   deletion_protection = true
 
   # Parameters
-  max_connections            = 200
-  log_min_duration_statement = 500
-
-  custom_parameters = [
-    {
-      name  = "work_mem"
-      value = "16384"
-    },
-    {
-      name  = "maintenance_work_mem"
-      value = "2097151"
-    }
-  ]
+  max_connections = 200
 
   # Alarms
-  create_cloudwatch_alarms     = true
-  alarm_actions                = [module.monitoring.sns_topic_arn]
-  alarm_cpu_threshold          = 80
-  alarm_free_storage_threshold = 10737418240 # 10GB
+  create_cloudwatch_alarms = true
 
   tags = local.common_tags
 }
@@ -188,21 +189,22 @@ module "ec2" {
   application_security_group_ids = [module.security.application_security_group_id]
 
   # Application configuration
-  application_port   = var.application_port
-  app_version        = var.app_version
-  ecr_repository_url = var.ecr_repository_url
-  db_secret_arn      = module.rds.db_secret_arn
+  application_port     = var.application_port
+  app_version          = var.app_version
+  db_secret_arn        = module.rds.db_secret_arn
+  db_master_secret_arn = module.rds.master_user_secret_arn
+  rds_kms_key_arn      = module.rds.kms_key_arn
+  ecr_repository_url   = module.ecr.repository_url
 
-  # Instance configuration
+  # Instance configuration (production-sized)
   instance_type              = "t3.small"
   root_volume_size           = 30
-  root_volume_type           = "gp3"
   enable_detailed_monitoring = true
 
-  # Auto Scaling
+  # Auto Scaling (production capacity)
   asg_min_size         = 2
-  asg_max_size         = 10
-  asg_desired_capacity = 4
+  asg_max_size         = 6
+  asg_desired_capacity = 2
 
   # Scaling policies
   enable_cpu_scaling      = true
@@ -213,8 +215,6 @@ module "ec2" {
   # Load Balancer
   enable_deletion_protection = true
   alb_idle_timeout           = 60
-  certificate_arn            = var.certificate_arn
-  enable_https_redirect      = var.certificate_arn != ""
 
   # Health checks
   health_check_path              = "/health"
@@ -225,7 +225,6 @@ module "ec2" {
 
   # Monitoring
   create_monitoring_alarms = true
-  alarm_actions            = [module.monitoring.sns_topic_arn]
   log_retention_days       = 30
 
   tags = local.common_tags
@@ -255,16 +254,10 @@ module "monitoring" {
   db_instance_id             = module.rds.db_instance_id
   application_log_group_name = module.ec2.cloudwatch_log_group_name
 
-  # Custom metrics
-  custom_namespace = "Production/${var.project_name}"
-
-  # Monitoring configuration
-  enable_log_alarms          = true
-  error_rate_threshold       = 5
-  enable_composite_alarms    = true
-  unhealthy_hosts_alarm_name = module.ec2.unhealthy_hosts_alarm_id
-  rds_cpu_alarm_name         = module.rds.cloudwatch_alarm_cpu_id
-  enable_eventbridge_rules   = true
+  # Monitoring configuration (full monitoring for production)
+  enable_log_alarms        = true
+  enable_composite_alarms  = true
+  enable_eventbridge_rules = true
 
   tags = local.common_tags
 }
