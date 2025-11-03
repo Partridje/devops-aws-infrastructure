@@ -149,6 +149,9 @@ jobs:
   lint-and-security:
     name: Lint and Security Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout repository
@@ -162,11 +165,14 @@ jobs:
           soft_fail: true
           output_format: cli
 
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      - name: Run Trivy for Terraform
+        uses: aquasecurity/trivy-action@master
         with:
-          working_directory: terraform/
-          soft_fail: true
+          scan-type: 'config'
+          scan-ref: 'terraform/'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          format: 'table'
 
       - name: Markdown lint
         uses: nosborn/github-action-markdown-cli@v3.3.0
