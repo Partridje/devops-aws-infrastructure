@@ -143,33 +143,38 @@ resource "aws_db_parameter_group" "main" {
   dynamic "parameter" {
     for_each = var.environment == "dev" ? [1] : []
     content {
-      name  = "log_statement"
-      value = "all"
+      name         = "log_statement"
+      value        = "all"
+      apply_method = "immediate"
     }
   }
 
   # Log slow queries (queries taking longer than this threshold)
   parameter {
-    name  = "log_min_duration_statement"
-    value = var.log_min_duration_statement
+    name         = "log_min_duration_statement"
+    value        = var.log_min_duration_statement
+    apply_method = "immediate"
   }
 
-  # Enable auto_explain for slow queries
+  # Enable auto_explain for slow queries (static parameter - requires reboot)
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
-  # Connection settings
+  # Connection settings (may require reboot depending on value)
   parameter {
-    name  = "max_connections"
-    value = var.max_connections
+    name         = "max_connections"
+    value        = var.max_connections
+    apply_method = "pending-reboot"
   }
 
-  # Memory settings
+  # Memory settings (static parameter - requires reboot)
   parameter {
-    name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/32768}"
+    name         = "shared_buffers"
+    value        = "{DBInstanceClassMemory/32768}"
+    apply_method = "pending-reboot"
   }
 
   # Additional custom parameters

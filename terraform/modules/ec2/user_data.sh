@@ -23,13 +23,7 @@ echo "Application Port: ${application_port}"
 echo "======================================"
 
 #####################################
-# Update system packages
-#####################################
-echo "Updating system packages..."
-dnf update -y
-
-#####################################
-# Install required packages
+# Install required packages (skip system update to avoid conflicts)
 #####################################
 echo "Installing required packages..."
 dnf install -y \
@@ -37,7 +31,6 @@ dnf install -y \
   python3-pip \
   postgresql15 \
   jq \
-  curl \
   wget \
   git \
   amazon-cloudwatch-agent

@@ -77,11 +77,13 @@ output "db_instance_address" {
 output "db_secret_arn" {
   description = "ARN of the database credentials secret"
   value       = module.rds.db_secret_arn
+  sensitive   = true
 }
 
 output "db_secret_name" {
   description = "Name of the database credentials secret"
   value       = module.rds.db_secret_name
+  sensitive   = true
 }
 
 #####################################
@@ -104,6 +106,7 @@ output "sns_topic_arn" {
 
 output "useful_commands" {
   description = "Useful commands for managing the infrastructure"
+  sensitive   = true
   value = {
     # ECR login and push
     ecr_login   = "aws ecr get-login-password --region ${data.aws_region.current.id} | docker login --username AWS --password-stdin ${module.ecr.repository_url}"

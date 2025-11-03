@@ -22,17 +22,17 @@ output "sns_topic_name" {
 
 output "dashboard_name" {
   description = "Name of the CloudWatch dashboard"
-  value       = length(aws_cloudwatch_dashboard.main) > 0 ? aws_cloudwatch_dashboard.main[0].dashboard_name : null
+  value       = aws_cloudwatch_dashboard.main.dashboard_name
 }
 
 output "dashboard_arn" {
   description = "ARN of the CloudWatch dashboard"
-  value       = length(aws_cloudwatch_dashboard.main) > 0 ? aws_cloudwatch_dashboard.main[0].dashboard_arn : null
+  value       = aws_cloudwatch_dashboard.main.dashboard_arn
 }
 
 output "dashboard_url" {
   description = "URL to the CloudWatch dashboard"
-  value       = length(aws_cloudwatch_dashboard.main) > 0 ? "https://console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.main[0].dashboard_name}" : null
+  value       = "https://console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.main.dashboard_name}"
 }
 
 #####################################
@@ -93,5 +93,5 @@ output "ec2_state_change_rule_arn" {
 
 output "rds_events_rule_arn" {
   description = "ARN of the RDS events EventBridge rule"
-  value       = var.enable_eventbridge_rules && var.db_instance_id != "" ? aws_cloudwatch_event_rule.rds_events[0].arn : null
+  value       = var.enable_eventbridge_rules ? aws_cloudwatch_event_rule.rds_events[0].arn : null
 }

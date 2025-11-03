@@ -135,7 +135,18 @@ resource "aws_iam_role_policy" "secrets_manager" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = var.db_secret_arn != "" ? var.db_secret_arn : "*"
+        Resource = compact([
+          var.db_secret_arn != "" ? var.db_secret_arn : "",
+          var.db_master_secret_arn != "" ? var.db_master_secret_arn : ""
+        ])
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = var.rds_kms_key_arn != "" ? var.rds_kms_key_arn : "*"
       }
     ]
   })

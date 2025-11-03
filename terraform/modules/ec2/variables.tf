@@ -109,6 +109,18 @@ variable "db_secret_arn" {
   default     = ""
 }
 
+variable "db_master_secret_arn" {
+  description = "ARN of AWS-managed master password secret in Secrets Manager"
+  type        = string
+  default     = ""
+}
+
+variable "rds_kms_key_arn" {
+  description = "ARN of KMS key used for RDS encryption"
+  type        = string
+  default     = ""
+}
+
 variable "custom_user_data" {
   description = "Additional user data script to append"
   type        = string
