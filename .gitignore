@@ -69,3 +69,4 @@ secrets/
 
 # Pre-commit
 .pre-commit-config.yaml.backup
+tfplan

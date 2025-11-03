@@ -66,8 +66,6 @@ resource "aws_sns_topic_policy" "alarms" {
 #####################################
 
 resource "aws_cloudwatch_dashboard" "main" {
-  count = var.alb_arn != "" || var.asg_name != "" || var.db_instance_id != "" ? 1 : 0
-
   dashboard_name = local.dashboard_name
 
   dashboard_body = jsonencode({
@@ -233,7 +231,7 @@ resource "aws_cloudwatch_event_target" "ec2_state_change_sns" {
 
 # Rule for RDS events
 resource "aws_cloudwatch_event_rule" "rds_events" {
-  count = var.enable_eventbridge_rules && var.db_instance_id != "" ? 1 : 0
+  count = var.enable_eventbridge_rules ? 1 : 0
 
   name        = "${var.name_prefix}-rds-events"
   description = "Capture RDS important events"
@@ -250,7 +248,7 @@ resource "aws_cloudwatch_event_rule" "rds_events" {
 }
 
 resource "aws_cloudwatch_event_target" "rds_events_sns" {
-  count = var.enable_eventbridge_rules && var.db_instance_id != "" ? 1 : 0
+  count = var.enable_eventbridge_rules ? 1 : 0
 
   rule      = aws_cloudwatch_event_rule.rds_events[0].name
   target_id = "SendToSNS"
