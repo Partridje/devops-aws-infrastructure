@@ -17,6 +17,21 @@ vpc_cidr = "10.0.0.0/16"
 application_port = 5001
 app_version      = "latest"
 
+#####################################
+# HTTPS/SSL Configuration (Optional for dev)
+#####################################
+# See docs/HTTPS_SETUP.md for detailed setup instructions
+# NOTE: For dev environment, HTTPS is optional. HTTP-only is fine for testing.
+
+# ACM certificate ARN (leave empty for HTTP-only in dev)
+# certificate_arn = ""  # e.g., "arn:aws:acm:eu-north-1:123456789012:certificate/xxx"
+
+# Enable HTTP to HTTPS redirect (only works if certificate_arn is provided)
+# enable_https_redirect = false  # Keep false for dev (allow HTTP access)
+
+# SSL/TLS security policy (only applies if HTTPS is enabled)
+# ssl_policy = "ELBSecurityPolicy-TLS-1-2-2017-01"
+
 # Database configuration
 database_name = "appdb"
 rds_port      = 5432

@@ -21,8 +21,25 @@ app_version      = "1.0.0"  # Use specific version tags in production
 # ECR repository (update after creating ECR repository)
 ecr_repository_url = ""  # e.g., "123456789012.dkr.ecr.eu-north-1.amazonaws.com/demo-app"
 
-# SSL/TLS certificate (update after creating ACM certificate)
+#####################################
+# HTTPS/SSL Configuration
+#####################################
+# See docs/HTTPS_SETUP.md for detailed setup instructions
+
+# ACM certificate ARN (leave empty to disable HTTPS)
+# Create certificate: AWS Console → Certificate Manager → Request certificate
 certificate_arn = ""  # e.g., "arn:aws:acm:eu-north-1:123456789012:certificate/xxx"
+
+# Enable HTTP to HTTPS redirect (recommended for production)
+# Only works if certificate_arn is provided
+enable_https_redirect = true
+
+# SSL/TLS security policy
+# Options:
+#   - ELBSecurityPolicy-TLS13-1-2-2021-06 (TLS 1.3 only, most secure)
+#   - ELBSecurityPolicy-TLS-1-2-2017-01 (TLS 1.2+, default, good balance)
+#   - ELBSecurityPolicy-2016-08 (TLS 1.0+, legacy support)
+ssl_policy = "ELBSecurityPolicy-TLS-1-2-2017-01"
 
 # Database configuration
 database_name = "appdb"

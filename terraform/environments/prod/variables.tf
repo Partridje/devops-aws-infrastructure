@@ -62,6 +62,18 @@ variable "certificate_arn" {
   default     = ""
 }
 
+variable "ssl_policy" {
+  description = "SSL policy for HTTPS listener"
+  type        = string
+  default     = "ELBSecurityPolicy-TLS-1-2-2017-01"
+}
+
+variable "enable_https_redirect" {
+  description = "Redirect HTTP to HTTPS (only works if certificate_arn is provided)"
+  type        = bool
+  default     = false
+}
+
 #####################################
 # Database Configuration
 #####################################
