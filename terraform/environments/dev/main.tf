@@ -79,6 +79,23 @@ module "vpc" {
 }
 
 #####################################
+# ECR Module
+#####################################
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  repository_name      = "${local.name_prefix}-app"
+  image_tag_mutability = "MUTABLE"
+  scan_on_push         = true
+  max_image_count      = 10
+  untagged_days        = 7
+  allowed_principals   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+
+  common_tags = local.common_tags
+}
+
+#####################################
 # Security Groups Module
 #####################################
 
@@ -170,9 +187,10 @@ module "ec2" {
   application_security_group_ids = [module.security.application_security_group_id]
 
   # Application configuration
-  application_port = var.application_port
-  app_version      = var.app_version
-  db_secret_arn    = module.rds.db_secret_arn
+  application_port   = var.application_port
+  app_version        = var.app_version
+  db_secret_arn      = module.rds.db_secret_arn
+  ecr_repository_url = module.ecr.repository_url
 
   # Instance configuration (cost-optimized)
   instance_type    = "t3.micro" # Free tier eligible

@@ -22,6 +22,20 @@ output "availability_zones" {
 }
 
 #####################################
+# ECR Outputs
+#####################################
+
+output "ecr_repository_url" {
+  description = "URL of the ECR repository"
+  value       = module.ecr.repository_url
+}
+
+output "ecr_repository_name" {
+  description = "Name of the ECR repository"
+  value       = module.ecr.repository_name
+}
+
+#####################################
 # Application Outputs
 #####################################
 
@@ -91,6 +105,11 @@ output "sns_topic_arn" {
 output "useful_commands" {
   description = "Useful commands for managing the infrastructure"
   value = {
+    # ECR login and push
+    ecr_login   = "aws ecr get-login-password --region ${data.aws_region.current.id} | docker login --username AWS --password-stdin ${module.ecr.repository_url}"
+    docker_tag  = "docker tag demo-flask-app:latest ${module.ecr.repository_url}:latest"
+    docker_push = "docker push ${module.ecr.repository_url}:latest"
+
     # Application testing
     test_health = "curl http://${module.ec2.alb_dns_name}/health"
     test_db     = "curl http://${module.ec2.alb_dns_name}/db"
