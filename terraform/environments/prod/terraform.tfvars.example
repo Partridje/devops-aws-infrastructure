@@ -78,6 +78,37 @@ alert_email_addresses = [
 ]
 
 #####################################
+# WAF (Web Application Firewall) Configuration
+#####################################
+# AWS WAF protects your ALB from common web attacks
+# Cost: ~$5-10/month + $1 per million requests
+# See docs/WAF_SETUP.md for detailed information
+
+# Rate limiting (requests per 5 minutes from single IP)
+# Recommended: 2000 for production, increase if needed
+# waf_rate_limit = 2000
+
+# IP whitelist (optional - bypasses all WAF rules)
+# Use for trusted IPs like office, monitoring services, etc.
+# Example: waf_ip_whitelist = ["203.0.113.0/24", "198.51.100.42/32"]
+# waf_ip_whitelist = []
+
+# Block specific countries (optional)
+# ISO 3166-1 alpha-2 country codes
+# Example: waf_blocked_countries = ["CN", "RU", "KP"]
+# Note: Carefully consider business impact before blocking
+# waf_blocked_countries = []
+
+# Exclude specific AWS Managed Rules (if causing false positives)
+# Only add rules here if you've confirmed they're blocking legitimate traffic
+# Example: waf_excluded_rules = ["SizeRestrictions_BODY"]
+# waf_excluded_rules = []
+
+# CloudWatch alarm threshold for blocked requests
+# Alerts when WAF blocks more than this many requests in 5 minutes
+# waf_blocked_requests_threshold = 1000
+
+#####################################
 # Production Checklist:
 #####################################
 # Pre-deployment:
