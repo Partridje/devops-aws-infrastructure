@@ -94,9 +94,9 @@ graph TB
 ## 📋 Prerequisites
 
 ### Required Tools
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.5.0 (tested with 1.13.x)
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.13.3 (required for state compatibility)
 - [AWS CLI](https://aws.amazon.com/cli/) >= 2.0
-- [Docker](https://www.docker.com/get-started) >= 20.10
+- [Docker](https://www.docker.com/get-started) >= 20.10 (with buildx for multi-platform builds)
 - [Python](https://www.python.org/downloads/) >= 3.11
 - [Make](https://www.gnu.org/software/make/) (optional, for convenience)
 
@@ -476,6 +476,42 @@ Add these secrets to GitHub repository:
 - **[app/DOCKER.md](app/DOCKER.md)** - Docker setup and usage
 - **[terraform/modules/*/README.md](terraform/modules/)** - Individual Terraform module documentation
 - **[scripts/README.md](scripts/README.md)** - Helper scripts documentation
+
+## ⚠️ Critical Fixes & Known Issues
+
+### Resolved Issues
+
+The following critical issues were identified and fixed during development:
+
+1. **IAM Permissions for RDS Secrets** ✅
+   - **Problem**: EC2 instances couldn't access AWS-managed RDS master password secret
+   - **Solution**: Added `db_master_secret_arn` and `rds_kms_key_arn` to EC2 IAM role policy
+   - **Location**: `terraform/modules/ec2/main.tf` lines 124-153
+
+2. **Docker Platform Mismatch** ✅
+   - **Problem**: Images built on arm64 (Mac M1) failed on amd64 EC2 instances
+   - **Solution**: Always build with `--platform linux/amd64`
+   - **Command**: `docker buildx build --platform linux/amd64 -t app:latest . --load`
+
+3. **Package Conflicts on Amazon Linux 2023** ✅
+   - **Problem**: `dnf update -y` caused curl-minimal conflicts
+   - **Solution**: Removed system update from user_data.sh
+   - **Location**: `terraform/modules/ec2/user_data.sh`
+
+4. **RDS Static Parameters** ✅
+   - **Problem**: Cannot use `apply_method = "immediate"` for static parameters
+   - **Solution**: Changed to `apply_method = "pending-reboot"`
+   - **Location**: `terraform/modules/rds/main.tf`
+
+5. **Volume Size Requirements** ✅
+   - **Problem**: Amazon Linux 2023 AMI requires minimum 30GB root volume
+   - **Solution**: Increased `root_volume_size` from 20GB to 30GB
+   - **Location**: `terraform/environments/*/main.tf`
+
+6. **Terraform Version Compatibility** ✅
+   - **Problem**: CI used v1.5.0 while local used v1.13.3, causing state errors
+   - **Solution**: Synchronized version to 1.13.3 across all workflows
+   - **Location**: `.github/workflows/*.yml`
 
 ## 🐛 Troubleshooting
 
