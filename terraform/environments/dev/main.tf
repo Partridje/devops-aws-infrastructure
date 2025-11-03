@@ -187,12 +187,12 @@ module "ec2" {
   application_security_group_ids = [module.security.application_security_group_id]
 
   # Application configuration
-  application_port       = var.application_port
-  app_version            = var.app_version
-  db_secret_arn          = module.rds.db_secret_arn
-  db_master_secret_arn   = module.rds.master_user_secret_arn
-  rds_kms_key_arn        = module.rds.kms_key_arn
-  ecr_repository_url     = module.ecr.repository_url
+  application_port     = var.application_port
+  app_version          = var.app_version
+  db_secret_arn        = module.rds.db_secret_arn
+  db_master_secret_arn = module.rds.master_user_secret_arn
+  rds_kms_key_arn      = module.rds.kms_key_arn
+  ecr_repository_url   = module.ecr.repository_url
 
   # Instance configuration (cost-optimized)
   instance_type    = "t3.micro" # Free tier eligible
