@@ -250,8 +250,6 @@ make destroy ENV=dev
 │       │   ├── backend.tf
 │       │   └── terraform.tfvars.example
 │       └── prod/
-├── monitoring/             # Monitoring configurations
-│   └── dashboards/
 ├── scripts/                # Helper scripts
 │   ├── setup-terraform-backend.sh
 │   └── generate-cert.sh
