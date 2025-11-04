@@ -288,8 +288,8 @@ module "waf" {
   # Rule customization
   excluded_rules = var.waf_excluded_rules
 
-  # Logging
-  enable_logging     = true
+  # Logging (disabled due to WAF ARN format issues)
+  enable_logging     = false
   log_retention_days = 14
 
   # Monitoring
