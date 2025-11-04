@@ -43,6 +43,11 @@ apply: ## Apply terraform changes
 	fi
 
 apply-auto: ## Apply terraform changes without confirmation (CI/CD)
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production deployments must go through CI/CD!$(NC)"; \
+		echo "$(YELLOW)Use GitHub Actions → Terraform Apply workflow instead$(NC)"; \
+		exit 1; \
+	fi
 	@echo "$(YELLOW)Auto-applying infrastructure changes for $(ENV)...$(NC)"
 	cd $(TERRAFORM_DIR) && terraform apply -auto-approve
 
@@ -77,6 +82,10 @@ output-json: ## Show terraform outputs in JSON
 	@cd $(TERRAFORM_DIR) && terraform output -json
 
 refresh: ## Refresh terraform state
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production state operations must go through CI/CD!$(NC)"; \
+		exit 1; \
+	fi
 	@echo "$(GREEN)Refreshing Terraform state for $(ENV)...$(NC)"
 	cd $(TERRAFORM_DIR) && terraform refresh
 
@@ -155,11 +164,19 @@ graph: ## Generate Terraform dependency graph
 	@echo "$(GREEN)Graph saved to $(TERRAFORM_DIR)/graph.png$(NC)"
 
 unlock: ## Unlock Terraform state (requires LOCK_ID)
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production state operations must go through CI/CD!$(NC)"; \
+		exit 1; \
+	fi
 	@test -n "$(LOCK_ID)" || (echo "$(RED)LOCK_ID is required. Usage: make unlock LOCK_ID=xxx$(NC)" && exit 1)
 	@echo "$(YELLOW)Unlocking state with ID: $(LOCK_ID)$(NC)"
 	cd $(TERRAFORM_DIR) && terraform force-unlock -force $(LOCK_ID)
 
 import: ## Import existing resource (requires RESOURCE and ID)
+	@if [ "$(ENV)" = "prod" ]; then \
+		echo "$(RED)❌ ERROR: Production state operations must go through CI/CD!$(NC)"; \
+		exit 1; \
+	fi
 	@test -n "$(RESOURCE)" || (echo "$(RED)RESOURCE is required$(NC)" && exit 1)
 	@test -n "$(ID)" || (echo "$(RED)ID is required$(NC)" && exit 1)
 	@echo "$(GREEN)Importing resource $(RESOURCE) with ID $(ID)$(NC)"
