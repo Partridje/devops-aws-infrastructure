@@ -230,7 +230,7 @@ module "ec2" {
 
   # Monitoring
   create_monitoring_alarms = true
-  log_retention_days       = 30
+  log_retention_days       = 14
 
   tags = local.common_tags
 
@@ -290,7 +290,7 @@ module "waf" {
 
   # Logging
   enable_logging     = true
-  log_retention_days = 30
+  log_retention_days = 14
 
   # Monitoring
   create_cloudwatch_alarms   = true
