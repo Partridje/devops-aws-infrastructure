@@ -32,7 +32,7 @@ rds_port      = 5432
 # Monitoring Configuration
 #####################################
 # Email addresses configured via GitHub Secret: TF_VAR_alert_email_addresses
-alert_email_addresses = []
+# alert_email_addresses = []  # Commented out - using GitHub Secret instead
 
 #####################################
 # WAF Configuration
