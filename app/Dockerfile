@@ -11,7 +11,7 @@
 #####################################
 # Stage 1: Builder
 #####################################
-FROM --platform=${BUILDPLATFORM:-linux/amd64} python:3.11-slim as builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} python:3.14-slim as builder
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -40,7 +40,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 #####################################
 # Stage 2: Runtime
 #####################################
-FROM --platform=${TARGETPLATFORM:-linux/amd64} python:3.11-slim
+FROM --platform=${TARGETPLATFORM:-linux/amd64} python:3.14-slim
 
 # Set metadata
 LABEL maintainer="devops@company.com"
