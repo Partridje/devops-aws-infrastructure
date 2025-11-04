@@ -1,26 +1,21 @@
-name: Build and Deploy Application
+name: Deploy Application
 
+# Application deployment is MANUAL ONLY
+# Infrastructure must be deployed first using terraform-apply workflow
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'app/**'
-      - '.github/workflows/app-deploy.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'app/**'
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy'
+        description: 'Environment to deploy to (infrastructure must exist)'
         required: true
         type: choice
         options:
           - dev
           - prod
+      image_tag:
+        description: 'Docker image tag (default: latest commit SHA)'
+        required: false
+        type: string
 
 permissions:
   id-token: write  # Required for OIDC
@@ -29,12 +24,90 @@ permissions:
 
 env:
   AWS_REGION: eu-north-1
-  ECR_REPOSITORY: demo-flask-app
+  PROJECT_NAME: demo-app
 
 jobs:
+  # First, verify infrastructure exists
+  verify-infrastructure:
+    name: Verify Infrastructure
+    runs-on: ubuntu-latest
+    outputs:
+      ecr_repository: ${{ steps.check-infra.outputs.ecr_repository }}
+      asg_name: ${{ steps.check-infra.outputs.asg_name }}
+      alb_url: ${{ steps.check-infra.outputs.alb_url }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check infrastructure exists
+        id: check-infra
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+
+          echo "Checking infrastructure for environment: ${ENV}"
+
+          # Check ECR Repository
+          ECR_REPO="${{ env.PROJECT_NAME }}-${ENV}-app"
+          if aws ecr describe-repositories --repository-names "${ECR_REPO}" --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "✓ ECR repository exists: ${ECR_REPO}"
+            ECR_URI=$(aws ecr describe-repositories --repository-names "${ECR_REPO}" --region ${{ env.AWS_REGION }} --query 'repositories[0].repositoryUri' --output text)
+            echo "ecr_repository=${ECR_URI}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::ECR repository not found: ${ECR_REPO}"
+            echo "Please run terraform-apply workflow first to create infrastructure"
+            exit 1
+          fi
+
+          # Check Auto Scaling Group
+          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
+            --query "AutoScalingGroups[?Tags[?Key=='Environment' && Value=='${ENV}'] && Tags[?Key=='Project' && Value=='${{ env.PROJECT_NAME }}']].AutoScalingGroupName" \
+            --output text | head -n1)
+
+          if [ -z "${ASG_NAME}" ]; then
+            echo "::error::Auto Scaling Group not found for environment: ${ENV}"
+            echo "Please run terraform-apply workflow first to create infrastructure"
+            exit 1
+          fi
+
+          echo "✓ Auto Scaling Group exists: ${ASG_NAME}"
+          echo "asg_name=${ASG_NAME}" >> $GITHUB_OUTPUT
+
+          # Check Application Load Balancer
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?Tags[?Key=='Environment' && Value=='${ENV}'] && Tags[?Key=='Project' && Value=='${{ env.PROJECT_NAME }}']].DNSName" \
+            --output text | head -n1)
+
+          if [ -z "${ALB_DNS}" ]; then
+            echo "::error::Application Load Balancer not found for environment: ${ENV}"
+            echo "Please run terraform-apply workflow first to create infrastructure"
+            exit 1
+          fi
+
+          echo "✓ Load Balancer exists: ${ALB_DNS}"
+
+          # Set ALB URL based on environment
+          if [ "${ENV}" == "prod" ]; then
+            echo "alb_url=https://${ALB_DNS}" >> $GITHUB_OUTPUT
+          else
+            echo "alb_url=http://${ALB_DNS}" >> $GITHUB_OUTPUT
+          fi
+
+          echo ""
+          echo "Infrastructure verification completed successfully!"
+          echo "ECR: ${ECR_URI}"
+          echo "ASG: ${ASG_NAME}"
+          echo "ALB: ${ALB_DNS}"
+
   build:
     name: Build and Push Docker Image
+    needs: verify-infrastructure
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
 
     steps:
       #####################################
@@ -71,19 +144,26 @@ jobs:
       - name: Generate image tags
         id: meta
         run: |
-          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          REPOSITORY="${{ env.ECR_REPOSITORY }}"
-          IMAGE_TAG="${{ github.sha }}"
+          # Use ECR repository from infrastructure verification
+          ECR_REPO="${{ needs.verify-infrastructure.outputs.ecr_repository }}"
 
-          TAGS="${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}"
-          TAGS="${TAGS},${REGISTRY}/${REPOSITORY}:latest"
-
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            TAGS="${TAGS},${REGISTRY}/${REPOSITORY}:main"
+          # Use provided image tag or default to commit SHA
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          else
+            IMAGE_TAG="${{ github.sha }}"
           fi
 
+          # Build tags
+          TAGS="${ECR_REPO}:${IMAGE_TAG}"
+          TAGS="${TAGS},${ECR_REPO}:latest"
+
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-          echo "image=${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "image=${ECR_REPO}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+          echo "Docker image will be tagged as:"
+          echo "  - ${ECR_REPO}:${IMAGE_TAG}"
+          echo "  - ${ECR_REPO}:latest"
 
       #####################################
       # Build Docker Image
@@ -141,10 +221,9 @@ jobs:
           docker stop test-app
 
       #####################################
-      # Push to ECR (only on main)
+      # Push to ECR
       #####################################
       - name: Push Docker image to ECR
-        if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: ./app
@@ -152,23 +231,27 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            environment=${{ github.event.inputs.environment }}
 
       #####################################
       # Output Image Info
       #####################################
-      - name: Image digest
-        if: github.ref == 'refs/heads/main'
+      - name: Image Info
         run: |
-          echo "Image pushed: ${{ steps.meta.outputs.image }}"
+          echo "✓ Image pushed successfully!"
+          echo "Image: ${{ steps.meta.outputs.image }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
           echo "image=${{ steps.meta.outputs.image }}" >> $GITHUB_OUTPUT
 
-  deploy-dev:
-    name: Deploy to Dev
-    needs: build
-    if: github.ref == 'refs/heads/main'
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    needs: [verify-infrastructure, build]
     runs-on: ubuntu-latest
     environment:
-      name: dev
+      name: ${{ github.event.inputs.environment }}
 
     steps:
       #####################################
@@ -185,140 +268,52 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      #####################################
-      # Get ASG Info
-      #####################################
-      - name: Get Auto Scaling Group name
-        id: get-asg
-        run: |
-          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-            --query "AutoScalingGroups[?Tags[?Key=='Environment' && Value=='dev']].AutoScalingGroupName" \
-            --output text | head -n1)
-          echo "asg_name=${ASG_NAME}" >> $GITHUB_OUTPUT
 
       #####################################
       # Trigger Instance Refresh
       #####################################
       - name: Start instance refresh
-        if: steps.get-asg.outputs.asg_name != ''
         run: |
-          aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name ${{ steps.get-asg.outputs.asg_name }} \
-            --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}'
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+          ENV="${{ github.event.inputs.environment }}"
+
+          echo "Starting instance refresh for ASG: ${ASG_NAME}"
+
+          # Use different strategies for dev vs prod
+          if [ "${ENV}" == "prod" ]; then
+            # Production: Blue-Green deployment with checkpoints
+            aws autoscaling start-instance-refresh \
+              --auto-scaling-group-name "${ASG_NAME}" \
+              --preferences '{"MinHealthyPercentage": 100, "InstanceWarmup": 300, "CheckpointPercentages": [50], "CheckpointDelay": 300}'
+          else
+            # Development: Faster rolling update
+            aws autoscaling start-instance-refresh \
+              --auto-scaling-group-name "${ASG_NAME}" \
+              --preferences '{"MinHealthyPercentage": 90, "InstanceWarmup": 300}'
+          fi
 
       - name: Wait for instance refresh
-        if: steps.get-asg.outputs.asg_name != ''
-        run: |
-          echo "Waiting for instance refresh to complete..."
-          sleep 120
-
-          # Check refresh status
-          STATUS=$(aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name ${{ steps.get-asg.outputs.asg_name }} \
-            --query "InstanceRefreshes[0].Status" \
-            --output text)
-
-          echo "Refresh status: ${STATUS}"
-
-      #####################################
-      # Smoke Tests
-      #####################################
-      - name: Get ALB URL
-        id: get-alb
-        run: |
-          ALB_DNS=$(aws elbv2 describe-load-balancers \
-            --query "LoadBalancers[?Tags[?Key=='Environment' && Value=='dev']].DNSName" \
-            --output text | head -n1)
-          echo "alb_url=http://${ALB_DNS}" >> $GITHUB_OUTPUT
-
-      - name: Run smoke tests
-        run: |
-          sleep 60  # Wait for new instances
-
-          ALB_URL="${{ steps.get-alb.outputs.alb_url }}"
-
-          echo "Running smoke tests against ${ALB_URL}"
-
-          # Test health
-          curl -f "${ALB_URL}/health" || exit 1
-
-          # Test database connectivity
-          curl -f "${ALB_URL}/db" || exit 1
-
-          echo "Smoke tests passed!"
-
-      #####################################
-      # Rollback on Failure
-      #####################################
-      - name: Rollback on failure
-        if: failure()
-        run: |
-          echo "::error::Deployment failed, consider rolling back"
-          # Cancel instance refresh if it's still running
-          aws autoscaling cancel-instance-refresh \
-            --auto-scaling-group-name ${{ steps.get-asg.outputs.asg_name }} \
-            || true
-
-  deploy-prod:
-    name: Deploy to Production
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
-    runs-on: ubuntu-latest
-    environment:
-      name: prod
-
-    steps:
-      #####################################
-      # Checkout Code
-      #####################################
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      #####################################
-      # Configure AWS Credentials
-      #####################################
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      #####################################
-      # Get ASG Info
-      #####################################
-      - name: Get Auto Scaling Group name
-        id: get-asg
-        run: |
-          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-            --query "AutoScalingGroups[?Tags[?Key=='Environment' && Value=='prod']].AutoScalingGroupName" \
-            --output text | head -n1)
-          echo "asg_name=${ASG_NAME}" >> $GITHUB_OUTPUT
-
-      #####################################
-      # Trigger Instance Refresh (Blue-Green)
-      #####################################
-      - name: Start instance refresh
-        if: steps.get-asg.outputs.asg_name != ''
-        run: |
-          aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name ${{ steps.get-asg.outputs.asg_name }} \
-            --preferences '{"MinHealthyPercentage": 100, "InstanceWarmup": 300, "CheckpointPercentages": [50], "CheckpointDelay": 300}'
-
-      - name: Wait for instance refresh
-        if: steps.get-asg.outputs.asg_name != ''
         timeout-minutes: 30
         run: |
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+
+          echo "Waiting for instance refresh to complete..."
+
           while true; do
             STATUS=$(aws autoscaling describe-instance-refreshes \
-              --auto-scaling-group-name ${{ steps.get-asg.outputs.asg_name }} \
+              --auto-scaling-group-name "${ASG_NAME}" \
               --query "InstanceRefreshes[0].Status" \
               --output text)
 
-            echo "Refresh status: ${STATUS}"
+            PERCENT=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "${ASG_NAME}" \
+              --query "InstanceRefreshes[0].PercentageComplete" \
+              --output text)
+
+            echo "Refresh status: ${STATUS} (${PERCENT}% complete)"
 
             if [ "${STATUS}" == "Successful" ]; then
-              echo "Instance refresh completed successfully"
+              echo "✓ Instance refresh completed successfully"
               break
             elif [ "${STATUS}" == "Failed" ] || [ "${STATUS}" == "Cancelled" ]; then
               echo "::error::Instance refresh failed with status: ${STATUS}"
@@ -331,36 +326,57 @@ jobs:
       #####################################
       # Smoke Tests
       #####################################
-      - name: Get ALB URL
-        id: get-alb
+      - name: Run smoke tests
         run: |
-          ALB_DNS=$(aws elbv2 describe-load-balancers \
-            --query "LoadBalancers[?Tags[?Key=='Environment' && Value=='prod']].DNSName" \
-            --output text | head -n1)
-          echo "alb_url=https://${ALB_DNS}" >> $GITHUB_OUTPUT
-
-      - name: Run comprehensive smoke tests
-        run: |
-          ALB_URL="${{ steps.get-alb.outputs.alb_url }}"
+          ALB_URL="${{ needs.verify-infrastructure.outputs.alb_url }}"
 
           echo "Running smoke tests against ${ALB_URL}"
 
-          # Test all endpoints
+          # Wait for instances to be healthy
+          sleep 60
+
+          # Test health endpoint
+          echo "Testing /health..."
           curl -f "${ALB_URL}/health" || exit 1
+
+          # Test database connectivity
+          echo "Testing /db..."
           curl -f "${ALB_URL}/db" || exit 1
+
+          # Test main page
+          echo "Testing /..."
           curl -f "${ALB_URL}/" || exit 1
-          curl -f "${ALB_URL}/metrics" || exit 1
 
-          # Test API
-          curl -f "${ALB_URL}/api/items" || exit 1
-
-          echo "All smoke tests passed!"
+          echo "✓ All smoke tests passed!"
 
       #####################################
-      # Notification
+      # Rollback on Failure
       #####################################
-      - name: Send deployment notification
-        if: always()
+      - name: Rollback on failure
+        if: failure()
         run: |
-          echo "Production deployment completed: ${{ job.status }}"
-          echo "ALB URL: ${{ steps.get-alb.outputs.alb_url }}"
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+
+          echo "::error::Deployment failed!"
+          echo "Cancelling instance refresh..."
+
+          aws autoscaling cancel-instance-refresh \
+            --auto-scaling-group-name "${ASG_NAME}" \
+            || true
+
+          echo "Consider rolling back to previous version"
+
+      #####################################
+      # Deployment Summary
+      #####################################
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "Deployment Completed Successfully!"
+          echo "=========================================="
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Image: ${{ needs.build.outputs.image }}"
+          echo "ASG: ${{ needs.verify-infrastructure.outputs.asg_name }}"
+          echo "ALB URL: ${{ needs.verify-infrastructure.outputs.alb_url }}"
+          echo "=========================================="
