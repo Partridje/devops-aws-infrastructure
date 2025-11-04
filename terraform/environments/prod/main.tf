@@ -158,8 +158,8 @@ module "rds" {
   performance_insights_retention_period = 7
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 
-  # Protection enabled for production
-  deletion_protection = true
+  # Protection disabled to allow terraform destroy
+  deletion_protection = false
 
   # Parameters
   max_connections = 200
