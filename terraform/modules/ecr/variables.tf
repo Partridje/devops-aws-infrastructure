@@ -32,6 +32,12 @@ variable "allowed_principals" {
   type        = list(string)
 }
 
+variable "force_delete" {
+  description = "If true, will delete the repository even if it contains images"
+  type        = bool
+  default     = false
+}
+
 variable "common_tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)

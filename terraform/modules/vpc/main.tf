@@ -75,6 +75,11 @@ resource "aws_internet_gateway" "main" {
       Name = "${var.name_prefix}-igw"
     }
   )
+
+  # Ensure proper cleanup order during destroy
+  lifecycle {
+    create_before_destroy = false
+  }
 }
 
 #####################################
@@ -216,6 +221,9 @@ resource "aws_route" "public_internet" {
   route_table_id         = aws_route_table.public.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.main.id
+
+  # Ensure route is created after IGW and destroyed before IGW
+  depends_on = [aws_internet_gateway.main]
 }
 
 # Associate public subnets with public route table

@@ -91,6 +91,7 @@ module "ecr" {
   max_image_count      = 10
   untagged_days        = 7
   allowed_principals   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+  force_delete         = true # Allow deletion even if repository contains images
 
   common_tags = local.common_tags
 }

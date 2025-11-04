@@ -91,6 +91,7 @@ module "ecr" {
   max_image_count      = 30 # Keep more images in production
   untagged_days        = 14
   allowed_principals   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+  force_delete         = true # Allow deletion even if repository contains images
 
   common_tags = local.common_tags
 }
@@ -213,7 +214,7 @@ module "ec2" {
   alb_requests_per_target = 1000
 
   # Load Balancer
-  enable_deletion_protection = true
+  enable_deletion_protection = false # Set to false to allow terraform destroy
   alb_idle_timeout           = 60
 
   # HTTPS/SSL Configuration
