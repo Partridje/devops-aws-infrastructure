@@ -94,7 +94,7 @@ jobs:
         id: plan
         working-directory: terraform/environments/${{ matrix.environment }}
         run: |
-          terraform plan -var="alert_email_addresses=${{ secrets.ALERT_EMAIL_ADDRESSES }}" -out=tfplan
+          terraform plan -var='alert_email_addresses=["${{ secrets.ALERT_EMAIL_ADDRESSES }}"]' -out=tfplan
           terraform show -no-color tfplan > plan.txt
 
       - name: Upload Plan
