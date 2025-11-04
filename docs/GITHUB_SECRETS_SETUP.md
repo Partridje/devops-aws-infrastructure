@@ -1,54 +1,54 @@
 # GitHub Secrets Setup
 
-## Настройка Secrets для Production
+## Setting Up Secrets for Production
 
 ### 1. Alert Email Addresses
 
-SNS email уведомления требуют настройки через GitHub Secret.
+SNS email notifications require configuration through GitHub Secret.
 
-**Шаги**:
+**Steps**:
 
-1. Открой настройки репозитория:
+1. Open repository settings:
    ```
    https://github.com/Partridje/devops-aws-infrastructure/settings/secrets/actions
    ```
 
-2. Нажми **"New repository secret"**
+2. Click **"New repository secret"**
 
-3. Добавь secret:
+3. Add secret:
    - **Name**: `ALERT_EMAIL_ADDRESSES`
-   - **Value**: `["tcytcerov@gmail.com"]`
+   - **Value**: `["your-email@example.com"]`
 
-   Формат: JSON массив строк. Для нескольких email:
+   Format: JSON array of strings. For multiple emails:
    ```json
    ["email1@example.com","email2@example.com"]
    ```
 
-4. Нажми **"Add secret"**
+4. Click **"Add secret"**
 
-### 2. Проверка работы
+### 2. Verification
 
-После добавления secret:
+After adding the secret:
 
-1. Запусти terraform apply через GitHub Actions:
+1. Run terraform apply through GitHub Actions:
    ```bash
-   # Через UI: Actions → Terraform Apply → Run workflow (prod)
-   # Или через CLI:
+   # Through UI: Actions → Terraform Apply → Run workflow (prod)
+   # Or through CLI:
    gh workflow run terraform-apply.yml -f environment=prod
    ```
 
-2. Проверь что SNS subscription создалась:
+2. Verify that SNS subscription was created:
    ```bash
    aws sns list-subscriptions-by-topic \
      --topic-arn arn:aws:sns:eu-north-1:851725636341:demo-app-prod-prod-alarms \
      --region eu-north-1
    ```
 
-3. Проверь email `tcytcerov@gmail.com`:
-   - Должно прийти письмо "AWS Notification - Subscription Confirmation"
-   - Нажми **"Confirm subscription"**
+3. Check email `your-email@example.com`:
+   - You should receive an email "AWS Notification - Subscription Confirmation"
+   - Click **"Confirm subscription"**
 
-4. После подтверждения проверь статус:
+4. After confirmation check the status:
    ```bash
    aws sns list-subscriptions-by-topic \
      --topic-arn arn:aws:sns:eu-north-1:851725636341:demo-app-prod-prod-alarms \
@@ -57,17 +57,17 @@ SNS email уведомления требуют настройки через Gi
      --output table
    ```
 
-   Должен быть статус **Confirmed** (не PendingConfirmation).
+   Status should be **Confirmed** (not PendingConfirmation).
 
-### 3. Тестирование уведомлений
+### 3. Testing Notifications
 
-Проверь что email уведомления работают:
+Verify that email notifications work:
 
 ```bash
-# Принудительно активировать alarm (создать высокую CPU нагрузку)
-# См. docs/TESTING_GUIDE.md раздел "1.1 CPU-Based Scaling Test"
+# Force activate alarm (create high CPU load)
+# See docs/TESTING_GUIDE.md section "1.1 CPU-Based Scaling Test"
 
-# Или опубликовать тестовое сообщение
+# Or publish a test message
 aws sns publish \
   --topic-arn arn:aws:sns:eu-north-1:851725636341:demo-app-prod-prod-alarms \
   --subject "Test Alert" \
@@ -75,77 +75,77 @@ aws sns publish \
   --region eu-north-1
 ```
 
-Должно прийти письмо на email.
+You should receive an email.
 
-## Существующие Secrets
+## Existing Secrets
 
-| Secret Name | Описание | Формат |
+| Secret Name | Description | Format |
 |-------------|----------|--------|
-| `AWS_ROLE_ARN` | IAM Role для OIDC | `arn:aws:iam::...` |
-| `ALERT_EMAIL_ADDRESSES` | Email для alerts | JSON array |
+| `AWS_ROLE_ARN` | IAM Role for OIDC | `arn:aws:iam::...` |
+| `ALERT_EMAIL_ADDRESSES` | Email for alerts | JSON array |
 
 ## Troubleshooting
 
-### Secret не подхватывается
+### Secret not being picked up
 
-Если после добавления secret terraform apply не создает subscription:
+If after adding the secret terraform apply doesn't create subscription:
 
-1. Проверь что secret существует:
+1. Verify that the secret exists:
    ```bash
    gh secret list
    ```
 
-2. Проверь что workflow использует secret (`.github/workflows/terraform-apply.yml`):
+2. Verify that workflow uses the secret (`.github/workflows/terraform-apply.yml`):
    ```yaml
    env:
      TF_VAR_alert_email_addresses: ${{ secrets.ALERT_EMAIL_ADDRESSES }}
    ```
 
-3. Проверь логи GitHub Actions:
+3. Check GitHub Actions logs:
    ```bash
    gh run list --workflow=terraform-apply.yml --limit 1
    gh run view <run-id> --log
    ```
 
-### Email не приходит
+### Email not arriving
 
-1. Проверь spam folder
-2. Проверь что subscription в состоянии "Confirmed":
+1. Check spam folder
+2. Verify that subscription is in "Confirmed" state:
    ```bash
    aws sns list-subscriptions --region eu-north-1 | grep -A 5 tcytcerov
    ```
-3. Проверь SNS topic policy:
+3. Check SNS topic policy:
    ```bash
    aws sns get-topic-attributes \
      --topic-arn arn:aws:sns:eu-north-1:851725636341:demo-app-prod-prod-alarms \
      --region eu-north-1
    ```
 
-### Изменить email адрес
+### Changing email address
 
-1. Обнови GitHub Secret:
+1. Update GitHub Secret:
    ```
    https://github.com/Partridje/devops-aws-infrastructure/settings/secrets/actions/ALERT_EMAIL_ADDRESSES
    ```
 
-2. Запусти terraform apply:
+2. Run terraform apply:
    ```bash
    gh workflow run terraform-apply.yml -f environment=prod
    ```
 
-3. Terraform удалит старую подписку и создаст новую
-4. Подтверди новый email
+3. Terraform will remove old subscription and create a new one
+4. Confirm the new email
 
 ## Security Notes
 
-- ❌ **НЕ коммить** email адреса в terraform.tfvars
-- ✅ **ИСПОЛЬЗУЙ** GitHub Secrets для чувствительных данных
-- ✅ **ПРОВЕРЯЙ** что `.tfvars` с реальными email в `.gitignore`
-- ✅ **ДОКУМЕНТИРУЙ** какие secrets нужны в README
+- ❌ **DO NOT commit** email addresses in terraform.tfvars
+- ✅ **USE** GitHub Secrets for sensitive data
+- ✅ **VERIFY** that `.tfvars` with real emails is in `.gitignore`
+- ✅ **DOCUMENT** which secrets are needed in README
 
-## Дополнительные Secrets (при необходимости)
+## Additional Secrets (if needed)
 
-Если в будущем понадобятся дополнительные secrets:
+If additional secrets are needed in the future:
 
 ```bash
 # SSL Certificate ARN
@@ -158,4 +158,4 @@ TF_VAR_waf_ip_whitelist='["1.2.3.4/32","5.6.7.8/32"]'
 TF_VAR_domain_name="app.example.com"
 ```
 
-Добавляй их аналогично через GitHub Settings → Secrets.
+Add them similarly through GitHub Settings → Secrets.

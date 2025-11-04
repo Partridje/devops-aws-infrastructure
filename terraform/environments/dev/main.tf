@@ -255,3 +255,28 @@ module "monitoring" {
 
   tags = local.common_tags
 }
+
+#####################################
+# WAF Module - DISABLED for Development
+#####################################
+# WAF is disabled in dev environment to reduce costs (~$5-10/month)
+# and simplify testing. Production has WAF enabled for security.
+#
+# To enable WAF in dev, uncomment the module below:
+#
+# module "waf" {
+#   source = "../../modules/waf"
+#
+#   name_prefix = local.name_prefix
+#   aws_region  = var.aws_region
+#   alb_arn     = module.ec2.alb_arn
+#
+#   rate_limit         = 10000  # Higher limit for dev testing
+#   enable_logging     = false
+#   create_cloudwatch_alarms = false
+#
+#   tags = local.common_tags
+#
+#   depends_on = [module.ec2]
+# }
+

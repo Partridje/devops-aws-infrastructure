@@ -1,22 +1,22 @@
 # Production Verification Checklist
 
-Последовательный список проверок для верификации production инфраструктуры.
+Sequential list of checks for verifying production infrastructure.
 
-## Подготовка
+## Preparation
 
 ```bash
-# Установить переменные окружения
+# Set environment variables
 export AWS_REGION=eu-north-1
 export ENV=prod
-export ALB_URL="demo-app-prod-alb-619878086.eu-north-1.elb.amazonaws.com"
+export ALB_URL="$(terraform output -raw alb_url)"
 
-# Получить ASG имя
+# Get ASG name
 export ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
   --region $AWS_REGION \
   --query 'AutoScalingGroups[?contains(AutoScalingGroupName, `prod`)].AutoScalingGroupName' \
   --output text)
 
-# Получить DB instance ID
+# Get DB instance ID
 export DB_INSTANCE=$(aws rds describe-db-instances \
   --region $AWS_REGION \
   --query 'DBInstances[?contains(DBInstanceIdentifier, `prod`)].DBInstanceIdentifier' \
@@ -28,12 +28,12 @@ echo "DB_INSTANCE: $DB_INSTANCE"
 
 ---
 
-## 1. Базовые проверки инфраструктуры
+## 1. Basic Infrastructure Checks
 
-### 1.1 Проверка VPC и Networking
+### 1.1 VPC and Networking Check
 
 ```bash
-# ✓ VPC существует
+# ✓ VPC exists
 aws ec2 describe-vpcs \
   --region $AWS_REGION \
   --filters "Name=tag:Project,Values=demo-app" "Name=tag:Environment,Values=prod" \
@@ -47,7 +47,7 @@ aws ec2 describe-subnets \
   --query 'Subnets[?contains(Tags[?Key==`Name`].Value, `public`)].AvailabilityZone' \
   --output text | wc -w
 
-# ✓ NAT Gateways работают
+# ✓ NAT Gateways are working
 aws ec2 describe-nat-gateways \
   --region $AWS_REGION \
   --filter "Name=tag:Environment,Values=prod" \
@@ -55,24 +55,24 @@ aws ec2 describe-nat-gateways \
   --output table
 ```
 
-**Ожидаемый результат:**
-- 1 VPC в состоянии `available`
+**Expected result:**
+- 1 VPC in `available` state
 - 3 Availability Zones
-- 3 NAT Gateways в состоянии `available`
+- 3 NAT Gateways in `available` state
 
 ---
 
-### 1.2 Проверка EC2 Instances
+### 1.2 EC2 Instances Check
 
 ```bash
-# ✓ Инстансы запущены
+# ✓ Instances are running
 aws ec2 describe-instances \
   --region $AWS_REGION \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
   --query 'Reservations[].Instances[].[InstanceId,InstanceType,State.Name,Placement.AvailabilityZone,PrivateIpAddress]' \
   --output table
 
-# ✓ Количество инстансов соответствует desired capacity
+# ✓ Instance count matches desired capacity
 INSTANCE_COUNT=$(aws ec2 describe-instances \
   --region $AWS_REGION \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
@@ -82,17 +82,17 @@ INSTANCE_COUNT=$(aws ec2 describe-instances \
 echo "Running instances: $INSTANCE_COUNT (expected: 2)"
 ```
 
-**Ожидаемый результат:**
-- 2 инстанса типа `t3.small`
-- Состояние `running`
-- Распределены по разным AZ
+**Expected result:**
+- 2 instances of type `t3.small`
+- State `running`
+- Distributed across different AZs
 
 ---
 
-### 1.3 Проверка Auto Scaling Group
+### 1.3 Auto Scaling Group Check
 
 ```bash
-# ✓ ASG конфигурация
+# ✓ ASG configuration
 aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names $ASG_NAME \
   --region $AWS_REGION \
@@ -107,17 +107,17 @@ aws autoscaling describe-policies \
   --output table
 ```
 
-**Ожидаемый результат:**
+**Expected result:**
 - MinSize: 2, DesiredCapacity: 2, MaxSize: 6
 - HealthCheckType: `ELB`
-- 2 scaling policies (CPU и ALB)
+- 2 scaling policies (CPU and ALB)
 
 ---
 
-### 1.4 Проверка RDS
+### 1.4 RDS Check
 
 ```bash
-# ✓ RDS статус
+# ✓ RDS status
 aws rds describe-db-instances \
   --db-instance-identifier $DB_INSTANCE \
   --region $AWS_REGION \
@@ -133,34 +133,34 @@ aws rds describe-db-snapshots \
   --output table | head -10
 ```
 
-**Ожидаемый результат:**
+**Expected result:**
 - Status: `available`
 - MultiAZ: `True`
 - Instance class: `db.t3.small`
 - Backup retention: 30 days
 - DeletionProtection: `True`
-- Automated snapshots существуют
+- Automated snapshots exist
 
 ---
 
-## 2. Проверка приложения
+## 2. Application Check
 
 ### 2.1 Health Check
 
 ```bash
-# ✓ Health endpoint отвечает
+# ✓ Health endpoint responds
 curl -s http://$ALB_URL/health | jq .
 
-# ✓ Версия приложения
+# ✓ Application version
 VERSION=$(curl -s http://$ALB_URL/health | jq -r '.version')
 echo "Application version: $VERSION (expected: 1.0.0)"
 
-# ✓ Database статус
+# ✓ Database status
 DB_STATUS=$(curl -s http://$ALB_URL/health | jq -r '.checks.database')
-echo "Database status: $DB_STATUS (expected: ok или not_initialized)"
+echo "Database status: $DB_STATUS (expected: ok or not_initialized)"
 ```
 
-**Ожидаемый результат:**
+**Expected result:**
 - HTTP 200
 - Status: `healthy`
 - Version: `1.0.0`
@@ -183,20 +183,20 @@ curl -s http://$ALB_URL/db | jq .
 echo "Testing API endpoint..."
 curl -s http://$ALB_URL/api/items | jq .
 
-# ✓ Создание записи
+# ✓ Create record
 echo "Creating test item..."
 curl -X POST http://$ALB_URL/api/items \
   -H "Content-Type: application/json" \
   -d '{"name":"test-item","value":123}' | jq .
 
-# ✓ Проверка что запись создалась
+# ✓ Verify record was created
 curl -s http://$ALB_URL/api/items | jq .
 ```
 
-**Ожидаемый результат:**
-- Все endpoints возвращают HTTP 200
-- Database connection работает
-- CRUD операции работают
+**Expected result:**
+- All endpoints return HTTP 200
+- Database connection works
+- CRUD operations work
 
 ---
 
@@ -230,25 +230,25 @@ else
 fi
 ```
 
-**Ожидаемый результат:**
-- Все targets в состоянии `healthy`
-- Нет unhealthy targets
+**Expected result:**
+- All targets in `healthy` state
+- No unhealthy targets
 
 ---
 
-## 3. Мониторинг и алерты
+## 3. Monitoring and Alerts
 
 ### 3.1 SNS Email Subscription
 
 ```bash
-# ✓ Subscription создан
+# ✓ Subscription created
 aws sns list-subscriptions-by-topic \
   --topic-arn arn:aws:sns:$AWS_REGION:851725636341:demo-app-prod-prod-alarms \
   --region $AWS_REGION \
   --query 'Subscriptions[].[Protocol,Endpoint,SubscriptionArn]' \
   --output table
 
-# Проверь статус
+# Check status
 SUBSCRIPTION_STATUS=$(aws sns list-subscriptions-by-topic \
   --topic-arn arn:aws:sns:$AWS_REGION:851725636341:demo-app-prod-prod-alarms \
   --region $AWS_REGION \
@@ -257,27 +257,27 @@ SUBSCRIPTION_STATUS=$(aws sns list-subscriptions-by-topic \
 
 if [[ "$SUBSCRIPTION_STATUS" == *"PendingConfirmation"* ]]; then
   echo "⚠️  Email subscription pending confirmation"
-  echo "Check email: tcytcerov@gmail.com"
+  echo "Check email: your-email@example.com"
 else
   echo "✓ Email subscription confirmed"
 fi
 ```
 
-**Действие:** Если PendingConfirmation - подтверди email!
+**Action:** If PendingConfirmation - confirm email!
 
 ---
 
 ### 3.2 CloudWatch Alarms
 
 ```bash
-# ✓ Список алармов
+# ✓ List of alarms
 aws cloudwatch describe-alarms \
   --region $AWS_REGION \
   --alarm-name-prefix demo-app-prod \
   --query 'MetricAlarms[].[AlarmName,StateValue,ActionsEnabled]' \
   --output table
 
-# ✓ Алармы в состоянии OK
+# ✓ Alarms in OK state
 ALARM_COUNT=$(aws cloudwatch describe-alarms \
   --region $AWS_REGION \
   --alarm-name-prefix demo-app-prod \
@@ -298,9 +298,9 @@ else
 fi
 ```
 
-**Ожидаемый результат:**
-- 10+ алармов создано
-- Все в состоянии `OK`
+**Expected result:**
+- 10+ alarms created
+- All in `OK` state
 - ActionsEnabled: `true`
 
 ---
@@ -308,21 +308,21 @@ fi
 ### 3.3 CloudWatch Logs
 
 ```bash
-# ✓ Log groups существуют
+# ✓ Log groups exist
 aws logs describe-log-groups \
   --region $AWS_REGION \
   --log-group-name-prefix "/aws" \
   --query 'logGroups[?contains(logGroupName, `demo-app-prod`)].logGroupName' \
   --output table
 
-# ✓ Логи пишутся
+# ✓ Logs are being written
 echo "Recent application logs:"
 aws logs tail /aws/ec2/demo-app-prod-application \
   --region $AWS_REGION \
   --since 5m \
   --format short | tail -20
 
-# ✓ Проверка на ERROR
+# ✓ Check for ERRORs
 ERROR_COUNT=$(aws logs filter-log-events \
   --region $AWS_REGION \
   --log-group-name /aws/ec2/demo-app-prod-application \
@@ -334,35 +334,35 @@ ERROR_COUNT=$(aws logs filter-log-events \
 echo "Errors in last hour: $ERROR_COUNT"
 ```
 
-**Ожидаемый результат:**
+**Expected result:**
 - 3 log groups: application, RDS, VPC flow logs
-- Логи пишутся в реальном времени
-- Минимум ERROR логов
+- Logs are being written in real-time
+- Minimal ERROR logs
 
 ---
 
 ### 3.4 CloudWatch Dashboard
 
 ```bash
-# ✓ Dashboard существует
+# ✓ Dashboard exists
 aws cloudwatch list-dashboards \
   --region $AWS_REGION \
   --query 'DashboardEntries[?contains(DashboardName, `prod`)].[DashboardName]' \
   --output table
 
-# Получить URL
+# Get URL
 DASHBOARD_URL="https://console.aws.amazon.com/cloudwatch/home?region=$AWS_REGION#dashboards/dashboard/demo-app-prod-prod-dashboard"
 echo "Dashboard URL: $DASHBOARD_URL"
 ```
 
 ---
 
-## 4. Безопасность
+## 4. Security
 
 ### 4.1 WAF Protection
 
 ```bash
-# ✓ WAF Web ACL создан
+# ✓ WAF Web ACL created
 aws wafv2 list-web-acls \
   --region $AWS_REGION \
   --scope REGIONAL \
@@ -396,10 +396,10 @@ aws cloudwatch get-metric-statistics \
   --query 'Datapoints[0].Sum'
 ```
 
-**Ожидаемый результат:**
-- WAF активен
-- 5-6 правил настроены
-- BlockedRequests метрика доступна
+**Expected result:**
+- WAF is active
+- 5-6 rules configured
+- BlockedRequests metric is available
 
 ---
 
@@ -427,24 +427,24 @@ aws ec2 describe-security-groups \
   --output table
 ```
 
-**Ожидаемый результат:**
+**Expected result:**
 - 3 security groups: ALB, Application, RDS
-- ALB: открыт 80 (443 если есть certificate)
-- Application: доступ только от ALB
-- RDS: доступ только от Application SG
+- ALB: port 80 open (443 if certificate exists)
+- Application: access only from ALB
+- RDS: access only from Application SG
 
 ---
 
 ### 4.3 Secrets Manager
 
 ```bash
-# ✓ Secrets существуют
+# ✓ Secrets exist
 aws secretsmanager list-secrets \
   --region $AWS_REGION \
   --query 'SecretList[?contains(Name, `prod`)].[Name,ARN]' \
   --output table
 
-# ✓ Rotation enabled (если настроено)
+# ✓ Rotation enabled (if configured)
 aws secretsmanager describe-secret \
   --secret-id demo-app-prod-db-creds \
   --region $AWS_REGION \
@@ -454,14 +454,14 @@ aws secretsmanager describe-secret \
 
 ---
 
-## 5. Функциональное тестирование
+## 5. Functional Testing
 
 ### 5.1 Rate Limiting Test (WAF)
 
 ```bash
 echo "Testing WAF rate limiting (sending 100 rapid requests)..."
 
-# Отправить много запросов быстро
+# Send many requests quickly
 for i in {1..100}; do
   curl -s -o /dev/null -w "%{http_code}\n" http://$ALB_URL/ &
 done
@@ -469,7 +469,7 @@ wait
 
 sleep 2
 
-# Проверить что WAF блокирует
+# Check that WAF is blocking
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB_URL/)
 if [ "$HTTP_CODE" == "403" ]; then
   echo "✓ WAF rate limiting works (got 403)"
@@ -477,18 +477,18 @@ else
   echo "⚠️  Got $HTTP_CODE (expected 403 after rate limit)"
 fi
 
-# Подождать 5 минут для снятия блокировки
+# Wait 5 minutes for block to be lifted
 echo "Waiting 5 minutes for rate limit to reset..."
 ```
 
-**Ожидаемый результат:** После ~2000 запросов получаем 403
+**Expected result:** After ~2000 requests we get 403
 
 ---
 
 ### 5.2 Multi-AZ Distribution Test
 
 ```bash
-# ✓ Инстансы в разных AZ
+# ✓ Instances in different AZs
 echo "Checking instance distribution across AZs..."
 
 aws ec2 describe-instances \
@@ -497,27 +497,27 @@ aws ec2 describe-instances \
   --query 'Reservations[].Instances[].[InstanceId,Placement.AvailabilityZone]' \
   --output table
 
-# Делаем запросы и смотрим из каких AZ отвечают
+# Make requests and see which AZs respond
 echo "Making 20 requests to check AZ distribution..."
 for i in {1..20}; do
   curl -s http://$ALB_URL/health | jq -r '.instance.az'
 done | sort | uniq -c
 ```
 
-**Ожидаемый результат:** Запросы распределяются между разными AZ
+**Expected result:** Requests are distributed across different AZs
 
 ---
 
 ### 5.3 Database Connection Pool Test
 
 ```bash
-# ✓ Connection pool работает
+# ✓ Connection pool works
 for i in {1..10}; do
   echo "Request $i:"
   curl -s http://$ALB_URL/db | jq '.pool_size'
 done
 
-# Все должны показывать pool_size: 10
+# All should show pool_size: 10
 ```
 
 ---
@@ -546,7 +546,7 @@ aws cloudwatch get-metric-statistics \
   --output table
 ```
 
-**Ожидаемый результат:** Response time < 200ms
+**Expected result:** Response time < 200ms
 
 ---
 
@@ -562,7 +562,7 @@ aws autoscaling describe-auto-scaling-groups \
   --query 'AutoScalingGroups[0].[MinSize,DesiredCapacity,MaxSize]' \
   --output table
 
-# Увеличить до 4
+# Scale up to 4
 echo "Scaling up to 4 instances..."
 aws autoscaling set-desired-capacity \
   --auto-scaling-group-name $ASG_NAME \
@@ -572,14 +572,14 @@ aws autoscaling set-desired-capacity \
 echo "Waiting for instances to launch..."
 sleep 60
 
-# Проверить
+# Check
 aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names $ASG_NAME \
   --region $AWS_REGION \
   --query 'AutoScalingGroups[0].Instances[].[InstanceId,HealthStatus,LifecycleState]' \
   --output table
 
-# Вернуть обратно
+# Scale back down
 echo "Scaling back to 2 instances..."
 aws autoscaling set-desired-capacity \
   --auto-scaling-group-name $ASG_NAME \
@@ -587,11 +587,11 @@ aws autoscaling set-desired-capacity \
   --region $AWS_REGION
 ```
 
-**Ожидаемый результат:** ASG масштабируется до 4, затем обратно до 2
+**Expected result:** ASG scales up to 4, then back down to 2
 
 ---
 
-### 6.2 CPU-Based Scaling (Опционально, создает нагрузку!)
+### 6.2 CPU-Based Scaling (Optional, creates load!)
 
 ```bash
 echo "⚠️  This will create high CPU load!"
@@ -602,7 +602,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-# Получить instance ID
+# Get instance ID
 INSTANCE_ID=$(aws ec2 describe-instances \
   --region $AWS_REGION \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
@@ -615,7 +615,7 @@ echo ""
 echo "Then monitor scaling in another terminal:"
 echo "watch -n 10 'aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names $ASG_NAME --region $AWS_REGION --query \"AutoScalingGroups[0].[DesiredCapacity,MinSize,MaxSize]\" --output text'"
 
-# Открыть SSM session
+# Open SSM session
 aws ssm start-session --target $INSTANCE_ID --region $AWS_REGION
 ```
 
@@ -623,10 +623,10 @@ aws ssm start-session --target $INSTANCE_ID --region $AWS_REGION
 
 ## 7. Test Email Notifications
 
-### 7.1 Отправить тестовое уведомление
+### 7.1 Send test notification
 
 ```bash
-# После подтверждения email subscription
+# After confirming email subscription
 echo "Sending test notification..."
 aws sns publish \
   --topic-arn arn:aws:sns:$AWS_REGION:851725636341:demo-app-prod-prod-alarms \
@@ -634,16 +634,16 @@ aws sns publish \
   --message "This is a test notification from production infrastructure. If you receive this, email alerts are working correctly!" \
   --region $AWS_REGION
 
-echo "✓ Test notification sent. Check email: tcytcerov@gmail.com"
+echo "✓ Test notification sent. Check email: your-email@example.com"
 ```
 
-**Ожидаемый результат:** Email приходит в течение 1 минуты
+**Expected result:** Email arrives within 1 minute
 
 ---
 
-## 8. Disaster Recovery Test (ОСТОРОЖНО!)
+## 8. Disaster Recovery Test (CAUTION!)
 
-### 8.1 Terminate Instance (симуляция отказа)
+### 8.1 Terminate Instance (failure simulation)
 
 ```bash
 echo "⚠️  This will terminate 1 instance to simulate failure!"
@@ -654,7 +654,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-# Терминировать 1 инстанс
+# Terminate 1 instance
 INSTANCE_ID=$(aws ec2 describe-instances \
   --region $AWS_REGION \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
@@ -664,7 +664,7 @@ INSTANCE_ID=$(aws ec2 describe-instances \
 echo "Terminating $INSTANCE_ID..."
 aws ec2 terminate-instances --instance-ids $INSTANCE_ID --region $AWS_REGION
 
-# Проверить что приложение доступно
+# Check that application is available
 echo "Checking application availability..."
 for i in {1..10}; do
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB_URL/health)
@@ -672,7 +672,7 @@ for i in {1..10}; do
   sleep 2
 done
 
-# ASG должен запустить новый инстанс
+# ASG should launch a new instance
 echo "Waiting for ASG to launch replacement..."
 sleep 60
 
@@ -683,59 +683,59 @@ aws autoscaling describe-auto-scaling-groups \
   --output table
 ```
 
-**Ожидаемый результат:**
-- Приложение остается доступным (zero downtime)
-- ASG автоматически запускает замену
-- Через 2-3 минуты capacity восстановлен
+**Expected result:**
+- Application remains available (zero downtime)
+- ASG automatically launches replacement
+- After 2-3 minutes capacity is restored
 
 ---
 
 ## Summary Checklist
 
-Отметь выполненные проверки:
+Mark completed checks:
 
-**Инфраструктура:**
-- [ ] VPC и Networking (3 AZ, NAT Gateways)
+**Infrastructure:**
+- [ ] VPC and Networking (3 AZ, NAT Gateways)
 - [ ] EC2 Instances (2 running, t3.small)
 - [ ] Auto Scaling Group (min=2, max=6, policies enabled)
 - [ ] RDS (Multi-AZ, backups enabled)
 
-**Приложение:**
-- [ ] Health check работает
-- [ ] Все endpoints отвечают (/, /health, /db, /api/items)
-- [ ] Database connection работает
-- [ ] CRUD операции работают
+**Application:**
+- [ ] Health check works
+- [ ] All endpoints respond (/, /health, /db, /api/items)
+- [ ] Database connection works
+- [ ] CRUD operations work
 - [ ] Load Balancer targets healthy
 
-**Мониторинг:**
+**Monitoring:**
 - [ ] SNS email subscription confirmed
-- [ ] CloudWatch alarms в состоянии OK
-- [ ] CloudWatch Logs пишутся
-- [ ] Dashboard доступен
+- [ ] CloudWatch alarms in OK state
+- [ ] CloudWatch Logs are being written
+- [ ] Dashboard is accessible
 - [ ] Test email notification received
 
-**Безопасность:**
-- [ ] WAF активен и работает
-- [ ] Rate limiting срабатывает
-- [ ] Security groups настроены правильно
-- [ ] Secrets Manager работает
+**Security:**
+- [ ] WAF is active and working
+- [ ] Rate limiting triggers
+- [ ] Security groups configured correctly
+- [ ] Secrets Manager works
 
-**Функциональность:**
-- [ ] Multi-AZ distribution работает
-- [ ] Database connection pool работает
-- [ ] Performance приемлемый (< 200ms)
+**Functionality:**
+- [ ] Multi-AZ distribution works
+- [ ] Database connection pool works
+- [ ] Performance is acceptable (< 200ms)
 
 **Auto Scaling:**
-- [ ] Manual scaling работает
-- [ ] Instance termination recovery работает
+- [ ] Manual scaling works
+- [ ] Instance termination recovery works
 
 **Disaster Recovery:**
-- [ ] Instance failure recovery протестирован
-- [ ] Zero downtime подтвержден
+- [ ] Instance failure recovery tested
+- [ ] Zero downtime confirmed
 
 ---
 
-## Финальная проверка
+## Final Check
 
 ```bash
 echo "=== Production Infrastructure Status ==="
@@ -768,25 +768,25 @@ echo ""
 echo "✓ Production verification complete!"
 ```
 
-## Что делать если что-то упало?
+## What to do if something fails?
 
-### Приложение не отвечает
-1. Проверь target health: `aws elbv2 describe-target-health --target-group-arn $TG_ARN`
-2. Проверь логи: `aws logs tail /aws/ec2/demo-app-prod-application --follow`
-3. Проверь security groups
+### Application not responding
+1. Check target health: `aws elbv2 describe-target-health --target-group-arn $TG_ARN`
+2. Check logs: `aws logs tail /aws/ec2/demo-app-prod-application --follow`
+3. Check security groups
 4. Instance refresh: `aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME`
 
-### Alarms в состоянии ALARM
-1. Проверь причину: `aws cloudwatch describe-alarms --state-value ALARM`
-2. Посмотри метрики в Dashboard
-3. Проверь логи приложения
+### Alarms in ALARM state
+1. Check reason: `aws cloudwatch describe-alarms --state-value ALARM`
+2. Look at metrics in Dashboard
+3. Check application logs
 
 ### Database connection failed
-1. Проверь RDS status: `aws rds describe-db-instances --db-instance-identifier $DB_INSTANCE`
-2. Проверь security groups
-3. Проверь secrets: `aws secretsmanager get-secret-value --secret-id demo-app-prod-db-creds`
+1. Check RDS status: `aws rds describe-db-instances --db-instance-identifier $DB_INSTANCE`
+2. Check security groups
+3. Check secrets: `aws secretsmanager get-secret-value --secret-id demo-app-prod-db-creds`
 
-### Email не приходит
-1. Проверь subscription status
-2. Проверь spam folder
-3. Отправь test message через SNS
+### Email not arriving
+1. Check subscription status
+2. Check spam folder
+3. Send test message through SNS

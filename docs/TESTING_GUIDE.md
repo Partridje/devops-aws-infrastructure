@@ -1,29 +1,29 @@
 # Testing Guide - Infrastructure and Auto Scaling
 
-Руководство по тестированию production инфраструктуры, Auto Scaling, мониторинга и отказоустойчивости.
+Guide for testing production infrastructure, Auto Scaling, monitoring, and high availability.
 
 ## 1. Auto Scaling Testing
 
 ### 1.1 CPU-Based Scaling Test
 
-**Цель**: Проверить что ASG масштабируется при высокой нагрузке CPU.
+**Goal**: Verify that ASG scales under high CPU load.
 
 ```bash
-# Получить ID инстанса
+# Get instance ID
 INSTANCE_ID=$(aws ec2 describe-instances \
   --region eu-north-1 \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
   --query 'Reservations[0].Instances[0].InstanceId' \
   --output text)
 
-# Подключиться к инстансу через SSM
+# Connect to instance via SSM
 aws ssm start-session --target $INSTANCE_ID --region eu-north-1
 
-# На инстансе запустить CPU stress test
+# On the instance, run CPU stress test
 sudo yum install -y stress
-stress --cpu 4 --timeout 600s  # 10 минут нагрузки на 4 ядра
+stress --cpu 4 --timeout 600s  # 10 minutes load on 4 cores
 
-# В другом терминале мониторить scaling
+# In another terminal, monitor scaling
 watch -n 10 'aws autoscaling describe-auto-scaling-groups \
   --region eu-north-1 \
   --auto-scaling-group-names demo-app-prod-asg-* \
@@ -31,36 +31,36 @@ watch -n 10 'aws autoscaling describe-auto-scaling-groups \
   --output text'
 ```
 
-**Ожидаемый результат**:
-- CPU метрика поднимется выше 70%
-- Через 2-3 минуты desired capacity увеличится
-- CloudWatch alarm `demo-app-prod-cpu-high` перейдет в ALARM
-- Новый инстанс запустится
-- После остановки stress CPU вернется к норме
-- Desired capacity уменьшится обратно до минимума
+**Expected result**:
+- CPU metric rises above 70%
+- After 2-3 minutes, desired capacity increases
+- CloudWatch alarm `demo-app-prod-cpu-high` transitions to ALARM
+- New instance launches
+- After stopping stress, CPU returns to normal
+- Desired capacity decreases back to minimum
 
 ### 1.2 Request-Based Scaling Test
 
-**Цель**: Проверить масштабирование по количеству запросов.
+**Goal**: Verify scaling based on request count.
 
 ```bash
-# Получить ALB URL
+# Get ALB URL
 ALB_URL=$(aws elbv2 describe-load-balancers \
   --region eu-north-1 \
   --query 'LoadBalancers[?contains(LoadBalancerName, `prod`)].DNSName' \
   --output text)
 
-# Запустить load test (требуется apache-bench)
-sudo apt-get install -y apache2-utils  # на Linux
-# или
-brew install httpie wrk  # на macOS
+# Run load test (requires apache-bench)
+sudo apt-get install -y apache2-utils  # on Linux
+# or
+brew install httpie wrk  # on macOS
 
-# Генерировать нагрузку
+# Generate load
 wrk -t12 -c400 -d5m http://$ALB_URL/health
-# или
+# or
 ab -n 100000 -c 50 http://$ALB_URL/health
 
-# Мониторить
+# Monitor
 watch -n 5 'echo "=== ALB Metrics ==="; \
 aws cloudwatch get-metric-statistics \
   --region eu-north-1 \
@@ -73,18 +73,18 @@ aws cloudwatch get-metric-statistics \
   --statistics Average'
 ```
 
-**Ожидаемый результат**:
+**Expected result**:
 - RequestCountPerTarget > 1000
-- ASG добавит инстансы
-- Response time останется приемлемым
-- WAF может блокировать если rate limit превышен
+- ASG adds instances
+- Response time remains acceptable
+- WAF may block if rate limit is exceeded
 
 ### 1.3 Manual Scaling Test
 
-**Цель**: Проверить что можно вручную изменить capacity.
+**Goal**: Verify that capacity can be changed manually.
 
 ```bash
-# Увеличить desired capacity до 4
+# Increase desired capacity to 4
 ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
   --region eu-north-1 \
   --query 'AutoScalingGroups[?contains(AutoScalingGroupName, `prod`)].AutoScalingGroupName' \
@@ -95,13 +95,13 @@ aws autoscaling set-desired-capacity \
   --desired-capacity 4 \
   --region eu-north-1
 
-# Проверить scaling activity
+# Check scaling activity
 aws autoscaling describe-scaling-activities \
   --auto-scaling-group-name $ASG_NAME \
   --region eu-north-1 \
   --max-records 5
 
-# Вернуть обратно
+# Revert back
 aws autoscaling set-desired-capacity \
   --auto-scaling-group-name $ASG_NAME \
   --desired-capacity 2 \
@@ -112,17 +112,17 @@ aws autoscaling set-desired-capacity \
 
 ### 2.1 Multi-AZ Failover Test
 
-**Цель**: Проверить что приложение работает при падении одной AZ.
+**Goal**: Verify that the application works when one AZ fails.
 
 ```bash
-# Посмотреть текущее распределение
+# View current distribution
 aws ec2 describe-instances \
   --region eu-north-1 \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
   --query 'Reservations[].Instances[].[InstanceId,Placement.AvailabilityZone,PrivateIpAddress]' \
   --output table
 
-# Терминировать все инстансы в одной AZ (симуляция отказа AZ)
+# Terminate all instances in one AZ (simulate AZ failure)
 INSTANCES_AZ_A=$(aws ec2 describe-instances \
   --region eu-north-1 \
   --filters "Name=tag:Environment,Values=prod" \
@@ -133,13 +133,13 @@ INSTANCES_AZ_A=$(aws ec2 describe-instances \
 
 aws ec2 terminate-instances --instance-ids $INSTANCES_AZ_A --region eu-north-1
 
-# Проверить что ALB перенаправляет трафик на оставшиеся AZ
+# Verify that ALB redirects traffic to remaining AZs
 for i in {1..20}; do
   curl -s http://$ALB_URL/health | jq '.instance.az'
   sleep 1
 done
 
-# ASG должен запустить новые инстансы в других AZ
+# ASG should launch new instances in other AZs
 watch -n 5 'aws ec2 describe-instances \
   --region eu-north-1 \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running,pending" \
@@ -147,25 +147,25 @@ watch -n 5 'aws ec2 describe-instances \
   --output table'
 ```
 
-**Ожидаемый результат**:
-- Приложение доступно без downtime
-- ALB переключает трафик на здоровые targets
-- ASG запускает замену в других AZ
-- RDS Multi-AZ продолжает работать
+**Expected result**:
+- Application is accessible without downtime
+- ALB switches traffic to healthy targets
+- ASG launches replacements in other AZs
+- RDS Multi-AZ continues to work
 
 ### 2.2 RDS Failover Test
 
-**Цель**: Проверить автоматический failover RDS.
+**Goal**: Verify automatic RDS failover.
 
 ```bash
-# Принудительный failover (ВНИМАНИЕ: кратковременный downtime БД)
+# Force failover (WARNING: brief database downtime)
 DB_INSTANCE=$(aws rds describe-db-instances \
   --region eu-north-1 \
   --query 'DBInstances[?contains(DBInstanceIdentifier, `prod`)].DBInstanceIdentifier' \
   --output text)
 
-echo "Инициирую failover для $DB_INSTANCE (будет ~2 минуты недоступности)"
-read -p "Продолжить? [y/N] " -n 1 -r
+echo "Initiating failover for $DB_INSTANCE (will have ~2 minutes of downtime)"
+read -p "Continue? [y/N] " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
   aws rds reboot-db-instance \
@@ -174,14 +174,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     --region eu-north-1
 fi
 
-# Мониторить статус
+# Monitor status
 watch -n 5 'aws rds describe-db-instances \
   --db-instance-identifier $DB_INSTANCE \
   --region eu-north-1 \
   --query "DBInstances[0].[DBInstanceStatus,AvailabilityZone]" \
   --output text'
 
-# Проверить что приложение переподключается
+# Verify that application reconnects
 for i in {1..60}; do
   STATUS=$(curl -s http://$ALB_URL/db | jq -r '.status')
   echo "$(date +%H:%M:%S) - DB Status: $STATUS"
@@ -189,20 +189,20 @@ for i in {1..60}; do
 done
 ```
 
-**Ожидаемый результат**:
-- RDS failover займет 1-2 минуты
-- Приложение покажет временные ошибки подключения
-- Приложение автоматически переподключится
-- Endpoint остается тем же (AWS DNS обновляется)
+**Expected result**:
+- RDS failover takes 1-2 minutes
+- Application shows temporary connection errors
+- Application automatically reconnects
+- Endpoint remains the same (AWS DNS updates)
 
 ## 3. Instance Refresh Testing
 
 ### 3.1 Rolling Update Test
 
-**Цель**: Обновить все инстансы без downtime.
+**Goal**: Update all instances without downtime.
 
 ```bash
-# Запустить instance refresh
+# Start instance refresh
 aws autoscaling start-instance-refresh \
   --auto-scaling-group-name $ASG_NAME \
   --region eu-north-1 \
@@ -211,14 +211,14 @@ aws autoscaling start-instance-refresh \
     "InstanceWarmup": 120
   }'
 
-# Получить refresh ID
+# Get refresh ID
 REFRESH_ID=$(aws autoscaling describe-instance-refreshes \
   --auto-scaling-group-name $ASG_NAME \
   --region eu-north-1 \
   --query 'InstanceRefreshes[0].InstanceRefreshId' \
   --output text)
 
-# Мониторить прогресс
+# Monitor progress
 watch -n 10 'aws autoscaling describe-instance-refreshes \
   --auto-scaling-group-name $ASG_NAME \
   --region eu-north-1 \
@@ -226,35 +226,35 @@ watch -n 10 'aws autoscaling describe-instance-refreshes \
   --query "InstanceRefreshes[0].[Status,PercentageComplete,StatusReason]" \
   --output table'
 
-# В параллельном окне - проверять доступность
+# In a parallel window - check availability
 while true; do
   curl -s -o /dev/null -w "%{http_code}\n" http://$ALB_URL/health
   sleep 2
 done
 ```
 
-**Ожидаемый результат**:
+**Expected result**:
 - MinHealthyPercentage: 100 = zero downtime
-- Инстансы обновляются по одному
-- ALB всегда имеет healthy targets
-- Все HTTP запросы возвращают 200
+- Instances update one by one
+- ALB always has healthy targets
+- All HTTP requests return 200
 
 ## 4. WAF Testing
 
 ### 4.1 Rate Limiting Test
 
-**Цель**: Проверить что WAF блокирует превышение rate limit.
+**Goal**: Verify that WAF blocks rate limit violations.
 
 ```bash
-# Быстро отправить много запросов с одного IP
+# Quickly send many requests from one IP
 for i in {1..3000}; do
   curl -s http://$ALB_URL/ > /dev/null &
 done
 
-# Проверить что получаем 403
+# Verify we get 403
 curl -v http://$ALB_URL/
 
-# Посмотреть WAF метрики
+# View WAF metrics
 aws cloudwatch get-metric-statistics \
   --region eu-north-1 \
   --namespace AWS/WAFV2 \
@@ -268,40 +268,40 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum
 ```
 
-**Ожидаемый результат**:
-- После ~2000 запросов получаем 403 Forbidden
-- WAF alarm `demo-app-prod-waf-rate-limit` активируется
-- Блокировка снимается через 5 минут
+**Expected result**:
+- After ~2000 requests we get 403 Forbidden
+- WAF alarm `demo-app-prod-waf-rate-limit` activates
+- Block is lifted after 5 minutes
 
-### 4.2 SQL Injection Test (ДОЛЖЕН БЛОКИРОВАТЬСЯ)
+### 4.2 SQL Injection Test (MUST BE BLOCKED)
 
-**Цель**: Проверить что WAF блокирует SQL injection.
+**Goal**: Verify that WAF blocks SQL injection.
 
 ```bash
-# Тест SQL injection (безопасно - только GET запрос)
+# Test SQL injection (safe - only GET request)
 curl -v "http://$ALB_URL/api/items?id=1' OR '1'='1"
 
-# Должен вернуть 403 Forbidden
+# Should return 403 Forbidden
 ```
 
 ## 5. Monitoring & Alerts Testing
 
 ### 5.1 CloudWatch Alarms Test
 
-**Цель**: Проверить что alarms работают и отправляют уведомления.
+**Goal**: Verify that alarms work and send notifications.
 
 ```bash
-# Посмотреть все алармы
+# View all alarms
 aws cloudwatch describe-alarms \
   --region eu-north-1 \
   --alarm-name-prefix demo-app-prod \
   --query 'MetricAlarms[].[AlarmName,StateValue]' \
   --output table
 
-# Принудительно вызвать alarm (high CPU)
-# ... используй stress test из раздела 1.1 ...
+# Forcefully trigger alarm (high CPU)
+# ... use stress test from section 1.1 ...
 
-# Проверить историю alarm
+# Check alarm history
 aws cloudwatch describe-alarm-history \
   --region eu-north-1 \
   --alarm-name demo-app-prod-cpu-high \
@@ -309,28 +309,28 @@ aws cloudwatch describe-alarm-history \
   --max-records 5
 ```
 
-**Ожидаемый результат**:
-- Alarm переходит в ALARM state
-- SNS topic получает сообщение
-- Email приходит на tcytcerov@gmail.com
+**Expected result**:
+- Alarm transitions to ALARM state
+- SNS topic receives message
+- Email arrives at your-email@example.com
 
 ### 5.2 Application Logs Test
 
-**Цель**: Проверить что логи собираются в CloudWatch.
+**Goal**: Verify that logs are collected in CloudWatch.
 
 ```bash
-# Посмотреть последние логи
+# View recent logs
 aws logs tail /aws/ec2/demo-app-prod-application \
   --region eu-north-1 \
   --follow
 
-# Сгенерировать тестовые запросы
+# Generate test requests
 for i in {1..50}; do
   curl -s http://$ALB_URL/ > /dev/null
   curl -s http://$ALB_URL/api/items > /dev/null
 done
 
-# Поиск ERROR в логах
+# Search for ERROR in logs
 aws logs filter-log-events \
   --region eu-north-1 \
   --log-group-name /aws/ec2/demo-app-prod-application \
@@ -342,34 +342,34 @@ aws logs filter-log-events \
 
 ### 6.1 Complete Infrastructure Recovery
 
-**Цель**: Проверить восстановление из полного отказа.
+**Goal**: Verify recovery from complete failure.
 
 ```bash
-# 1. Сделать snapshot текущего состояния
+# 1. Take snapshot of current state
 terraform -chdir=terraform/environments/prod show -json > backup-state.json
 
-# 2. Уничтожить инфраструктуру (НЕ в production!!!)
+# 2. Destroy infrastructure (NOT in production!!!)
 # terraform -chdir=terraform/environments/prod destroy -auto-approve
 
-# 3. Восстановить
+# 3. Restore
 # terraform -chdir=terraform/environments/prod apply -auto-approve
 
-# 4. Проверить что всё работает
+# 4. Verify everything works
 make smoke-test ENV=prod
 ```
 
 ### 6.2 RDS Snapshot Restore
 
-**Цель**: Проверить восстановление БД из snapshot.
+**Goal**: Verify database restore from snapshot.
 
 ```bash
-# Создать snapshot вручную
+# Create snapshot manually
 aws rds create-db-snapshot \
   --db-instance-identifier $DB_INSTANCE \
   --db-snapshot-identifier demo-app-prod-manual-snapshot-$(date +%Y%m%d) \
   --region eu-north-1
 
-# Посмотреть snapshots
+# View snapshots
 aws rds describe-db-snapshots \
   --db-instance-identifier $DB_INSTANCE \
   --region eu-north-1 \
@@ -381,43 +381,43 @@ aws rds describe-db-snapshots \
 
 ### 7.1 Network Isolation Test
 
-**Цель**: Проверить что приватные ресурсы недоступны извне.
+**Goal**: Verify that private resources are not accessible from outside.
 
 ```bash
-# RDS endpoint не должен быть доступен публично
+# RDS endpoint should not be publicly accessible
 DB_ENDPOINT=$(aws rds describe-db-instances \
   --db-instance-identifier $DB_INSTANCE \
   --region eu-north-1 \
   --query 'DBInstances[0].Endpoint.Address' \
   --output text)
 
-# Должен timeout (RDS в private subnet)
-timeout 5 nc -zv $DB_ENDPOINT 5432 || echo "✓ RDS недоступен публично (правильно)"
+# Should timeout (RDS in private subnet)
+timeout 5 nc -zv $DB_ENDPOINT 5432 || echo "✓ RDS not publicly accessible (correct)"
 
-# Приложения доступны только через ALB
+# Applications accessible only through ALB
 INSTANCE_IP=$(aws ec2 describe-instances \
   --region eu-north-1 \
   --filters "Name=tag:Environment,Values=prod" "Name=instance-state-name,Values=running" \
   --query 'Reservations[0].Instances[0].PrivateIpAddress' \
   --output text)
 
-# Должен timeout (EC2 в private subnet)
-timeout 5 curl http://$INSTANCE_IP:5001 || echo "✓ EC2 недоступен публично (правильно)"
+# Should timeout (EC2 in private subnet)
+timeout 5 curl http://$INSTANCE_IP:5001 || echo "✓ EC2 not publicly accessible (correct)"
 ```
 
 ### 7.2 IAM Permissions Test
 
-**Цель**: Проверить что инстансы имеют минимальные необходимые права.
+**Goal**: Verify that instances have minimum necessary permissions.
 
 ```bash
-# Подключиться к инстансу
+# Connect to instance
 aws ssm start-session --target $INSTANCE_ID --region eu-north-1
 
-# На инстансе попробовать выполнить запрещенные действия
-aws ec2 describe-instances  # Должно быть запрещено
-aws s3 ls                    # Должно быть запрещено
+# On the instance, try to perform forbidden actions
+aws ec2 describe-instances  # Should be denied
+aws s3 ls                    # Should be denied
 
-# Разрешенные действия
+# Allowed actions
 aws secretsmanager get-secret-value --secret-id demo-app-prod-db-creds  # ✓
 aws ecr get-login-password  # ✓
 aws logs put-log-events     # ✓
@@ -427,10 +427,10 @@ aws logs put-log-events     # ✓
 
 ### 8.1 Database Performance
 
-**Цель**: Проверить производительность БД.
+**Goal**: Verify database performance.
 
 ```bash
-# API endpoint для создания записей
+# API endpoint for creating records
 for i in {1..1000}; do
   curl -X POST http://$ALB_URL/api/items \
     -H "Content-Type: application/json" \
@@ -438,22 +438,22 @@ for i in {1..1000}; do
 done
 wait
 
-# Проверить RDS Performance Insights
-echo "Открой: https://console.aws.amazon.com/rds/home?region=eu-north-1#performance-insights:resourceId=$DB_INSTANCE"
+# Check RDS Performance Insights
+echo "Open: https://console.aws.amazon.com/rds/home?region=eu-north-1#performance-insights:resourceId=$DB_INSTANCE"
 
-# Проверить connection pool
+# Check connection pool
 curl -s http://$ALB_URL/db | jq
 ```
 
 ### 8.2 Latency Test
 
-**Цель**: Измерить задержки на разных этапах.
+**Goal**: Measure latencies at different stages.
 
 ```bash
 # ALB latency
 curl -w "@curl-format.txt" -o /dev/null -s http://$ALB_URL/health
 
-# Создать curl-format.txt:
+# Create curl-format.txt:
 cat > curl-format.txt << 'EOF'
     time_namelookup:  %{time_namelookup}s\n
        time_connect:  %{time_connect}s\n
@@ -479,27 +479,27 @@ aws cloudwatch get-metric-statistics \
   --output table
 ```
 
-## Checklist тестирования перед production release
+## Testing checklist before production release
 
-- [ ] Auto Scaling при CPU нагрузке работает
-- [ ] Auto Scaling при request нагрузке работает
-- [ ] Multi-AZ failover без downtime
-- [ ] RDS failover проходит успешно
-- [ ] Instance refresh без downtime
-- [ ] WAF блокирует rate limit
-- [ ] WAF блокирует SQL injection
-- [ ] CloudWatch alarms активируются
-- [ ] Email уведомления приходят
-- [ ] Логи пишутся в CloudWatch
-- [ ] RDS snapshots создаются автоматически
-- [ ] Приватные ресурсы недоступны извне
-- [ ] IAM permissions минимальны
-- [ ] Performance приемлемый (< 200ms)
-- [ ] Health checks проходят
+- [ ] Auto Scaling on CPU load works
+- [ ] Auto Scaling on request load works
+- [ ] Multi-AZ failover without downtime
+- [ ] RDS failover succeeds
+- [ ] Instance refresh without downtime
+- [ ] WAF blocks rate limit
+- [ ] WAF blocks SQL injection
+- [ ] CloudWatch alarms activate
+- [ ] Email notifications arrive
+- [ ] Logs are written to CloudWatch
+- [ ] RDS snapshots are created automatically
+- [ ] Private resources are not accessible from outside
+- [ ] IAM permissions are minimal
+- [ ] Performance is acceptable (< 200ms)
+- [ ] Health checks pass
 
-## Автоматизация тестов
+## Test Automation
 
-Можно создать скрипты для автоматизации:
+Scripts can be created for automation:
 
 ```bash
 # scripts/run-infrastructure-tests.sh
