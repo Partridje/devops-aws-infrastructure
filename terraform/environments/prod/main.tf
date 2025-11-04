@@ -261,7 +261,7 @@ module "monitoring" {
 
   # Monitoring configuration (full monitoring for production)
   enable_log_alarms        = true
-  enable_composite_alarms  = true
+  enable_composite_alarms  = false  # Disabled - requires alarm names from EC2/RDS modules
   enable_eventbridge_rules = true
 
   tags = local.common_tags
