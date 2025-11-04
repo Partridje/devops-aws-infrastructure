@@ -95,6 +95,7 @@ output "db_secret_arn" {
 output "db_secret_name" {
   description = "Name of the database credentials secret"
   value       = module.rds.db_secret_name
+  sensitive   = true
 }
 
 output "db_multi_az" {
@@ -145,6 +146,7 @@ output "security_groups" {
 
 output "useful_commands" {
   description = "Useful commands for managing the infrastructure"
+  sensitive   = true
   value = {
     # Application testing
     test_health = "curl ${var.certificate_arn != "" ? "https" : "http"}://${module.ec2.alb_dns_name}/health"
