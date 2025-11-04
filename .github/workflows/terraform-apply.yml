@@ -86,6 +86,8 @@ jobs:
       - name: Terraform Init
         working-directory: terraform/environments/${{ matrix.environment }}
         run: terraform init
+        env:
+          TF_VAR_alert_email_addresses: ${{ secrets.ALERT_EMAIL_ADDRESSES }}
 
       #####################################
       # Terraform Plan
@@ -96,6 +98,8 @@ jobs:
         run: |
           terraform plan -out=tfplan
           terraform show -no-color tfplan > plan.txt
+        env:
+          TF_VAR_alert_email_addresses: ${{ secrets.ALERT_EMAIL_ADDRESSES }}
 
       - name: Upload Plan
         uses: actions/upload-artifact@v4
@@ -113,6 +117,8 @@ jobs:
         id: apply
         working-directory: terraform/environments/${{ matrix.environment }}
         run: terraform apply -auto-approve tfplan
+        env:
+          TF_VAR_alert_email_addresses: ${{ secrets.ALERT_EMAIL_ADDRESSES }}
 
       #####################################
       # Get Outputs

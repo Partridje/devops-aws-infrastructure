@@ -1,11 +1,21 @@
 # Multi-stage Dockerfile for Flask Application
 # Stage 1: Builder - Install dependencies
 # Stage 2: Runtime - Lightweight production image
+#
+# Build for linux/amd64 (AWS EC2 t3 instances):
+#   docker build --platform linux/amd64 -t app:tag .
+#
+# Build for current platform:
+#   docker build -t app:tag .
 
 #####################################
 # Stage 1: Builder
 #####################################
-FROM python:3.11-slim as builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} python:3.11-slim as builder
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+RUN echo "Building on $BUILDPLATFORM for $TARGETPLATFORM"
 
 # Set working directory
 WORKDIR /build
@@ -30,7 +40,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 #####################################
 # Stage 2: Runtime
 #####################################
-FROM python:3.11-slim
+FROM --platform=${TARGETPLATFORM:-linux/amd64} python:3.11-slim
 
 # Set metadata
 LABEL maintainer="devops@company.com"
