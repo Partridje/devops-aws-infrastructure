@@ -258,11 +258,11 @@ INSTANCE_IP=$INSTANCE_IP
 AVAILABILITY_ZONE=$AZ
 
 # Database Configuration (if available)
-DB_HOST=$${DB_HOST:-}
-DB_PORT=$${DB_PORT:-5432}
-DB_NAME=$${DB_NAME:-appdb}
-DB_USER=$${DB_USER:-}
-DB_PASSWORD=$${DB_PASSWORD:-}
+DB_HOST="$${DB_HOST:-}"
+DB_PORT="$${DB_PORT:-5432}"
+DB_NAME="$${DB_NAME:-appdb}"
+DB_USER="$${DB_USER:-}"
+DB_PASSWORD="$${DB_PASSWORD:-}"
 
 # SSM Parameter for app version
 SSM_PARAMETER_NAME="${ssm_parameter_name}"
