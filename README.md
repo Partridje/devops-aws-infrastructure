@@ -312,7 +312,7 @@ make destroy ENV=dev
 - **Non-root container** user
 - **Read-only root filesystem** where possible
 
-See [SECURITY.md](docs/SECURITY.md) for detailed security practices.
+See the Security Features section above for security practices implemented in this project.
 
 ## 📊 Monitoring & Observability
 
@@ -476,27 +476,12 @@ Add these secrets to GitHub repository:
 
 ### Quick Start
 - **[QUICK_START.md](QUICK_START.md)** - Deploy in 15 minutes (recommended for first-time users)
-- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment guide with all options
 
-### Understanding the System
-- **[HOW_IT_WORKS.md](HOW_IT_WORKS.md)** - Complete system explanation with diagrams
-- **[FILES_OVERVIEW.md](FILES_OVERVIEW.md)** - Guide to all files in the repository
+### Architecture & Design
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Detailed architecture decisions and patterns
 
-### Operations & Security
-- **[docs/IAM_SETUP.md](docs/IAM_SETUP.md)** - IAM user setup and permissions (START HERE)
-- **[docs/RUNBOOK.md](docs/RUNBOOK.md)** - Operational procedures, troubleshooting, incident response
-- **[docs/SECURITY.md](docs/SECURITY.md)** - Security best practices, compliance, and hardening
-- **[docs/PASSWORD_MANAGEMENT.md](docs/PASSWORD_MANAGEMENT.md)** - AWS managed passwords (ephemeral approach)
-- **[docs/SECRETS_ACCESS_CONTROL.md](docs/SECRETS_ACCESS_CONTROL.md)** - IAM policies, access control, monitoring
-
-### Configuration & Setup
-- **[docs/HTTPS_SETUP.md](docs/HTTPS_SETUP.md)** - SSL/TLS certificates and HTTPS configuration
-- **[docs/SNS_SETUP.md](docs/SNS_SETUP.md)** - Email alerts and notification configuration
-- **[docs/WAF_SETUP.md](docs/WAF_SETUP.md)** - Web Application Firewall configuration
-- **[docs/SECRETS_ROTATION.md](docs/SECRETS_ROTATION.md)** - RDS password rotation procedures
-- **[docs/SESSION_MANAGER.md](docs/SESSION_MANAGER.md)** - Secure EC2 access without SSH
-- **[docs/DEPENDABOT.md](docs/DEPENDABOT.md)** - Automatic dependency updates with Dependabot
+### Configuration
+- **[docs/GITHUB_SECRETS_SETUP.md](docs/GITHUB_SECRETS_SETUP.md)** - GitHub Actions secrets configuration for CI/CD
 
 ### Component Documentation
 - **[app/README.md](app/README.md)** - Flask application documentation
