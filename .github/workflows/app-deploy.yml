@@ -154,16 +154,14 @@ jobs:
             IMAGE_TAG="${{ github.sha }}"
           fi
 
-          # Build tags
+          # Build tags (only commit SHA, no 'latest')
           TAGS="${ECR_REPO}:${IMAGE_TAG}"
-          TAGS="${TAGS},${ECR_REPO}:latest"
 
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
           echo "image=${ECR_REPO}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
           echo "Docker image will be tagged as:"
           echo "  - ${ECR_REPO}:${IMAGE_TAG}"
-          echo "  - ${ECR_REPO}:latest"
 
       #####################################
       # Build Docker Image
@@ -268,6 +266,59 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      #####################################
+      # Update Launch Template with new image tag
+      #####################################
+      - name: Update Launch Template
+        run: |
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+          IMAGE_TAG="${{ needs.build.outputs.image }}"
+          IMAGE_TAG_ONLY=$(echo "$IMAGE_TAG" | cut -d':' -f2)
+
+          echo "Updating Launch Template with image tag: ${IMAGE_TAG_ONLY}"
+
+          # Get current Launch Template
+          LT_ID=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG_NAME}" \
+            --query "AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId" \
+            --output text)
+
+          LT_VERSION=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG_NAME}" \
+            --query "AutoScalingGroups[0].LaunchTemplate.Version" \
+            --output text)
+
+          echo "Current Launch Template: ${LT_ID} version ${LT_VERSION}"
+
+          # Get current Launch Template data
+          LT_DATA=$(aws ec2 describe-launch-template-versions \
+            --launch-template-id "${LT_ID}" \
+            --versions "${LT_VERSION}" \
+            --query "LaunchTemplateVersions[0].LaunchTemplateData" \
+            --output json)
+
+          # Update UserData with new app_version
+          CURRENT_USER_DATA=$(echo "$LT_DATA" | jq -r '.UserData' | base64 -d)
+          NEW_USER_DATA=$(echo "$CURRENT_USER_DATA" | sed "s/app_version=[^ \"]*/app_version=${IMAGE_TAG_ONLY}/g")
+          ENCODED_USER_DATA=$(echo "$NEW_USER_DATA" | base64 -w 0)
+
+          # Create new Launch Template version
+          NEW_LT_VERSION=$(aws ec2 create-launch-template-version \
+            --launch-template-id "${LT_ID}" \
+            --source-version "${LT_VERSION}" \
+            --launch-template-data "{\"UserData\":\"${ENCODED_USER_DATA}\"}" \
+            --query "LaunchTemplateVersion.VersionNumber" \
+            --output text)
+
+          echo "Created new Launch Template version: ${NEW_LT_VERSION}"
+
+          # Update ASG to use new Launch Template version
+          aws autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name "${ASG_NAME}" \
+            --launch-template "LaunchTemplateId=${LT_ID},Version=${NEW_LT_VERSION}"
+
+          echo "✓ ASG updated to use Launch Template version ${NEW_LT_VERSION}"
 
       #####################################
       # Trigger Instance Refresh
