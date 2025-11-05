@@ -264,8 +264,8 @@ DB_NAME=$${DB_NAME:-appdb}
 DB_USER=$${DB_USER:-}
 DB_PASSWORD=$${DB_PASSWORD:-}
 
-# Application Version
-APP_VERSION=${app_version}
+# SSM Parameter for app version
+SSM_PARAMETER_NAME="${ssm_parameter_name}"
 
 # Log Configuration
 LOG_LEVEL=INFO
@@ -273,22 +273,104 @@ LOG_FORMAT=json
 EOF
 
 #####################################
-# Pull and run Docker container (if ECR URL provided)
+# Create deployment script (if ECR URL provided)
 #####################################
 if [ -n "${ecr_repository_url}" ]; then
-  echo "Pulling Docker image from ECR..."
-  docker pull ${ecr_repository_url}:${app_version}
+  echo "Creating application deployment script..."
 
-  echo "Running Docker container..."
-  docker run -d \
-    --name application \
-    --restart unless-stopped \
-    -p ${application_port}:${application_port} \
-    --env-file /opt/application/.env \
-    -v /var/log:/var/log \
-    ${ecr_repository_url}:${app_version}
+  cat > /usr/local/bin/deploy-app.sh <<'DEPLOY_SCRIPT'
+#!/bin/bash
+set -e
 
-  echo "Docker container started successfully"
+# Load configuration
+source /opt/application/.env
+
+# Get SSM Parameter name from environment
+SSM_PARAM="$SSM_PARAMETER_NAME"
+ECR_REPO="${ecr_repository_url}"
+APP_PORT="${application_port}"
+
+echo "=== Application Deployment Script ==="
+echo "Fetching app version from SSM Parameter: $SSM_PARAM"
+
+# Fetch current app version from SSM Parameter
+APP_VERSION=$(aws ssm get-parameter --name "$SSM_PARAM" --region "$AWS_REGION" --query 'Parameter.Value' --output text 2>/dev/null)
+
+if [ -z "$APP_VERSION" ] || [ "$APP_VERSION" == "initial" ]; then
+  echo "WARNING: No valid app version found in SSM Parameter. Skipping deployment."
+  exit 0
+fi
+
+echo "App version: $APP_VERSION"
+
+# Login to ECR
+echo "Logging in to ECR..."
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
+
+# Stop and remove old container (if exists)
+if docker ps -a --format '{{.Names}}' | grep -q '^application$'; then
+  echo "Stopping old container..."
+  docker stop application || true
+  docker rm application || true
+fi
+
+# Pull new image
+echo "Pulling Docker image: $ECR_REPO:$APP_VERSION"
+docker pull "$ECR_REPO:$APP_VERSION"
+
+# Start new container
+echo "Starting new container..."
+docker run -d \
+  --name application \
+  --restart unless-stopped \
+  -p "$APP_PORT:$APP_PORT" \
+  --env-file /opt/application/.env \
+  -v /var/log:/var/log \
+  "$ECR_REPO:$APP_VERSION"
+
+echo "Application deployed successfully: $APP_VERSION"
+DEPLOY_SCRIPT
+
+  chmod +x /usr/local/bin/deploy-app.sh
+
+  # Add SSM_PARAMETER_NAME to environment file for deploy script
+  echo "SSM_PARAMETER_NAME=${ssm_parameter_name}" >> /opt/application/.env
+
+  #####################################
+  # Create systemd service
+  #####################################
+  echo "Creating systemd service for application..."
+
+  cat > /etc/systemd/system/app-launcher.service <<'SYSTEMD_SERVICE'
+[Unit]
+Description=Application Launcher Service
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/opt/application/.env
+ExecStart=/usr/local/bin/deploy-app.sh
+ExecStop=/usr/bin/docker stop application
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD_SERVICE
+
+  # Enable and start service
+  echo "Enabling application service..."
+  systemctl daemon-reload
+  systemctl enable app-launcher.service
+
+  echo "Starting application service..."
+  systemctl start app-launcher.service || {
+    echo "WARNING: Application service failed to start (expected if no image in ECR yet)"
+    echo "Service will automatically start on next boot or when triggered via SSM Run Command"
+  }
 else
   #####################################
   # Alternative: Install application directly

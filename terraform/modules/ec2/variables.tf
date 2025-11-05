@@ -91,10 +91,14 @@ variable "application_port" {
   }
 }
 
-variable "app_version" {
-  description = "Application version tag"
+variable "ssm_parameter_name" {
+  description = "Name of SSM parameter containing application version"
   type        = string
-  default     = "latest"
+}
+
+variable "ssm_parameter_arn" {
+  description = "ARN of SSM parameter containing application version"
+  type        = string
 }
 
 variable "ecr_repository_url" {

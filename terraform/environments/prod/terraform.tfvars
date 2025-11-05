@@ -12,7 +12,6 @@ vpc_cidr = "10.1.0.0/16"
 
 # Application configuration
 application_port = 5001
-app_version      = "1.0.0"
 
 # ECR repository
 ecr_repository_url = "851725636341.dkr.ecr.eu-north-1.amazonaws.com/demo-flask-app"

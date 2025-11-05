@@ -97,6 +97,19 @@ module "ecr" {
 }
 
 #####################################
+# SSM Parameter Store Module
+#####################################
+# Manages application version parameter
+# Updated by GitHub Actions workflow during deployment
+module "ssm" {
+  source = "../../modules/ssm"
+
+  project_name        = var.project_name
+  environment         = var.environment
+  initial_app_version = "initial" # Placeholder, will be updated by GitHub workflow
+}
+
+#####################################
 # Security Groups Module
 #####################################
 
@@ -189,7 +202,8 @@ module "ec2" {
 
   # Application configuration
   application_port     = var.application_port
-  app_version          = var.app_version
+  ssm_parameter_name   = module.ssm.app_version_parameter_name
+  ssm_parameter_arn    = module.ssm.app_version_parameter_arn
   db_secret_arn        = module.rds.db_secret_arn
   db_master_secret_arn = module.rds.master_user_secret_arn
   rds_kms_key_arn      = module.rds.kms_key_arn

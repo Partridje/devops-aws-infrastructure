@@ -12,7 +12,6 @@ vpc_cidr = "10.0.0.0/16"
 
 # Application configuration
 application_port = 5001
-app_version      = "latest"
 
 # Database configuration
 database_name = "appdb"

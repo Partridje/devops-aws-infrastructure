@@ -44,12 +44,6 @@ variable "application_port" {
   default     = 5001
 }
 
-variable "app_version" {
-  description = "Application version tag"
-  type        = string
-  default     = "1.0.0"
-}
-
 variable "ecr_repository_url" {
   description = "ECR repository URL for Docker images"
   type        = string

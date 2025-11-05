@@ -44,12 +44,6 @@ variable "application_port" {
   default     = 5001
 }
 
-variable "app_version" {
-  description = "Application version tag"
-  type        = string
-  default     = "latest"
-}
-
 #####################################
 # Database Configuration
 #####################################

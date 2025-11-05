@@ -287,60 +287,75 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       #####################################
-      # Update Launch Template with new image tag
+      # Update SSM Parameter with new app version
       #####################################
-      - name: Update Launch Template
+      - name: Update SSM Parameter
         run: |
-          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+          ENV="${{ github.event.inputs.environment }}"
           IMAGE_TAG="${{ needs.build.outputs.image }}"
           IMAGE_TAG_ONLY=$(echo "$IMAGE_TAG" | cut -d':' -f2)
 
-          echo "Updating Launch Template with image tag: ${IMAGE_TAG_ONLY}"
+          # SSM Parameter name pattern
+          SSM_PARAM="/${{ env.PROJECT_NAME }}/${ENV}/app/version"
 
-          # Get current Launch Template
-          LT_ID=$(aws autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "${ASG_NAME}" \
-            --query "AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId" \
-            --output text)
+          echo "Updating SSM Parameter: ${SSM_PARAM}"
+          echo "New version: ${IMAGE_TAG_ONLY}"
 
-          LT_VERSION=$(aws autoscaling describe-auto-scaling-groups \
-            --auto-scaling-group-names "${ASG_NAME}" \
-            --query "AutoScalingGroups[0].LaunchTemplate.Version" \
-            --output text)
+          # Update SSM Parameter
+          aws ssm put-parameter \
+            --name "${SSM_PARAM}" \
+            --value "${IMAGE_TAG_ONLY}" \
+            --type String \
+            --overwrite \
+            --region ${{ env.AWS_REGION }}
 
-          echo "Current Launch Template: ${LT_ID} version ${LT_VERSION}"
-
-          # Get current Launch Template data
-          LT_DATA=$(aws ec2 describe-launch-template-versions \
-            --launch-template-id "${LT_ID}" \
-            --versions "${LT_VERSION}" \
-            --query "LaunchTemplateVersions[0].LaunchTemplateData" \
-            --output json)
-
-          # Update UserData with new app_version
-          CURRENT_USER_DATA=$(echo "$LT_DATA" | jq -r '.UserData' | base64 -d)
-          NEW_USER_DATA=$(echo "$CURRENT_USER_DATA" | sed "s/app_version=[^ \"]*/app_version=${IMAGE_TAG_ONLY}/g")
-          ENCODED_USER_DATA=$(echo "$NEW_USER_DATA" | base64 -w 0)
-
-          # Create new Launch Template version
-          NEW_LT_VERSION=$(aws ec2 create-launch-template-version \
-            --launch-template-id "${LT_ID}" \
-            --source-version "${LT_VERSION}" \
-            --launch-template-data "{\"UserData\":\"${ENCODED_USER_DATA}\"}" \
-            --query "LaunchTemplateVersion.VersionNumber" \
-            --output text)
-
-          echo "Created new Launch Template version: ${NEW_LT_VERSION}"
-
-          # Update ASG to use new Launch Template version
-          aws autoscaling update-auto-scaling-group \
-            --auto-scaling-group-name "${ASG_NAME}" \
-            --launch-template "LaunchTemplateId=${LT_ID},Version=${NEW_LT_VERSION}"
-
-          echo "✓ ASG updated to use Launch Template version ${NEW_LT_VERSION}"
+          echo "✓ SSM Parameter updated successfully"
 
       #####################################
-      # Trigger Instance Refresh
+      # Deploy to existing instances via SSM Run Command
+      #####################################
+      - name: Deploy to existing instances
+        run: |
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+
+          echo "Deploying application to existing EC2 instances via SSM Run Command..."
+
+          # Get list of instance IDs from ASG
+          INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names "${ASG_NAME}" \
+            --query "AutoScalingGroups[0].Instances[?HealthStatus=='Healthy' && LifecycleState=='InService'].InstanceId" \
+            --output text)
+
+          if [ -z "$INSTANCE_IDS" ]; then
+            echo "No healthy instances found in ASG. Skipping deployment to existing instances."
+          else
+            echo "Found instances: $INSTANCE_IDS"
+
+            # Run deployment script on all instances
+            COMMAND_ID=$(aws ssm send-command \
+              --document-name "AWS-RunShellScript" \
+              --instance-ids $INSTANCE_IDS \
+              --parameters 'commands=["/usr/local/bin/deploy-app.sh"]' \
+              --timeout-seconds 600 \
+              --region ${{ env.AWS_REGION }} \
+              --query "Command.CommandId" \
+              --output text)
+
+            echo "SSM Run Command initiated: ${COMMAND_ID}"
+            echo "Waiting for deployment to complete..."
+
+            # Wait for command to complete
+            aws ssm wait command-executed \
+              --command-id "${COMMAND_ID}" \
+              --instance-ids $INSTANCE_IDS \
+              --region ${{ env.AWS_REGION }} \
+              || echo "WARNING: Some instances may have failed. Check SSM command output."
+
+            echo "✓ Deployment to existing instances completed"
+          fi
+
+      #####################################
+      # Trigger Instance Refresh (for new instances)
       #####################################
       - name: Start instance refresh
         run: |

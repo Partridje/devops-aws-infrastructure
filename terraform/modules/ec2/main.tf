@@ -176,6 +176,26 @@ resource "aws_iam_role_policy" "ecr" {
   })
 }
 
+# Policy for SSM Parameter Store (to read app version)
+resource "aws_iam_role_policy" "ssm_parameter" {
+  name_prefix = "${var.name_prefix}-ssm-parameter-"
+  role        = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = var.ssm_parameter_arn
+      }
+    ]
+  })
+}
+
 # Attach AWS managed policies
 resource "aws_iam_role_policy_attachment" "ssm_managed_instance" {
   role       = aws_iam_role.ec2_role.name
@@ -372,11 +392,12 @@ resource "aws_launch_template" "main" {
   # User data script
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     region             = data.aws_region.current.id
+    aws_region         = data.aws_region.current.id
     log_group_name     = aws_cloudwatch_log_group.application.name
     application_port   = var.application_port
     db_secret_arn      = var.db_secret_arn
     environment        = var.environment
-    app_version        = var.app_version
+    ssm_parameter_name = var.ssm_parameter_name
     ecr_repository_url = var.ecr_repository_url
     custom_user_data   = var.custom_user_data
   }))
