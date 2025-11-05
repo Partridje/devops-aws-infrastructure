@@ -230,9 +230,14 @@ make plan ENV=dev
 # Deploy
 make apply ENV=dev
 
-# Destroy
+# Destroy infrastructure
 make destroy ENV=dev
+
+# Cleanup backend (S3 + DynamoDB) - only when removing project completely
+./scripts/cleanup-terraform-backend.sh
 ```
+
+**Note**: `terraform destroy` removes all application infrastructure but **keeps** the Terraform backend (S3 buckets and DynamoDB table). This is intentional to preserve state history. Use `cleanup-terraform-backend.sh` only when completely removing the project.
 
 ## 📁 Project Structure
 
