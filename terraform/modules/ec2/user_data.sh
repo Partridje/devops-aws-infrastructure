@@ -281,45 +281,20 @@ if [ -n "${ecr_repository_url}" ]; then
   cat > /usr/local/bin/deploy-app.sh <<'DEPLOY_SCRIPT'
 #!/bin/bash
 set -e
-
-# Load configuration
 source /opt/application/.env
-
-# Get SSM Parameter name from environment
 SSM_PARAM="$SSM_PARAMETER_NAME"
 ECR_REPO="${ecr_repository_url}"
 APP_PORT="${application_port}"
-
-echo "=== Application Deployment Script ==="
-echo "Fetching app version from SSM Parameter: $SSM_PARAM"
-
-# Fetch current app version from SSM Parameter
 APP_VERSION=$(aws ssm get-parameter --name "$SSM_PARAM" --region "$AWS_REGION" --query 'Parameter.Value' --output text 2>/dev/null)
-
 if [ -z "$APP_VERSION" ] || [ "$APP_VERSION" == "initial" ]; then
-  echo "WARNING: No valid app version found in SSM Parameter. Skipping deployment."
   exit 0
 fi
-
-echo "App version: $APP_VERSION"
-
-# Login to ECR
-echo "Logging in to ECR..."
-aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
-
-# Stop and remove old container (if exists)
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO" >/dev/null 2>&1
 if docker ps -a --format '{{.Names}}' | grep -q '^application$'; then
-  echo "Stopping old container..."
-  docker stop application || true
-  docker rm application || true
+  docker stop application >/dev/null 2>&1 || true
+  docker rm application >/dev/null 2>&1 || true
 fi
-
-# Pull new image
-echo "Pulling Docker image: $ECR_REPO:$APP_VERSION"
 docker pull "$ECR_REPO:$APP_VERSION"
-
-# Start new container
-echo "Starting new container..."
 docker run -d \
   --name application \
   --restart unless-stopped \
@@ -327,8 +302,6 @@ docker run -d \
   --env-file /opt/application/.env \
   -v /var/log:/var/log \
   "$ECR_REPO:$APP_VERSION"
-
-echo "Application deployed successfully: $APP_VERSION"
 DEPLOY_SCRIPT
 
   chmod +x /usr/local/bin/deploy-app.sh
