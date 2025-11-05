@@ -141,7 +141,7 @@ jobs:
 
           # Check ALB exists and is active (search by name prefix)
           ALB_ARN=$(aws elbv2 describe-load-balancers \
-            --query "LoadBalancers[?starts_with(LoadBalancerName, '${{ env.PROJECT_NAME }}-${{ matrix.environment }}-')].LoadBalancerArn" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName, 'demo-app-${{ matrix.environment }}-')].LoadBalancerArn" \
             --output text --region ${{ env.AWS_REGION }} | head -n1)
 
           if [ -z "$ALB_ARN" ]; then
