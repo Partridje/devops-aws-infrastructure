@@ -139,13 +139,13 @@ jobs:
         run: |
           echo "Verifying infrastructure deployment..."
 
-          # Check ALB exists and is active
+          # Check ALB exists and is active (search by name prefix)
           ALB_ARN=$(aws elbv2 describe-load-balancers \
-            --query "LoadBalancers[?Tags[?Key=='Environment' && Value=='${{ matrix.environment }}']].LoadBalancerArn" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName, '${{ env.PROJECT_NAME }}-${{ matrix.environment }}-')].LoadBalancerArn" \
             --output text --region ${{ env.AWS_REGION }} | head -n1)
 
           if [ -z "$ALB_ARN" ]; then
-            echo "::error::ALB not found"
+            echo "::error::ALB not found for environment ${{ matrix.environment }}"
             exit 1
           fi
 
