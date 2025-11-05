@@ -146,6 +146,7 @@ jobs:
         run: |
           # Use ECR repository from infrastructure verification
           ECR_REPO="${{ needs.verify-infrastructure.outputs.ecr_repository }}"
+          ECR_REPO_NAME=$(echo "${ECR_REPO}" | cut -d'/' -f2)
 
           # Use provided image tag or default to commit SHA
           if [ -n "${{ github.event.inputs.image_tag }}" ]; then
@@ -157,6 +158,19 @@ jobs:
           # Build tags (only commit SHA, no 'latest')
           TAGS="${ECR_REPO}:${IMAGE_TAG}"
 
+          # Check if image already exists in ECR
+          if aws ecr describe-images \
+            --repository-name "${ECR_REPO_NAME}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+
+            echo "✓ Image already exists in ECR: ${ECR_REPO}:${IMAGE_TAG}"
+            echo "image_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Image not found in ECR, will build and push"
+            echo "image_exists=false" >> $GITHUB_OUTPUT
+          fi
+
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
           echo "image=${ECR_REPO}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
@@ -167,6 +181,7 @@ jobs:
       # Build Docker Image
       #####################################
       - name: Build Docker image
+        if: steps.meta.outputs.image_exists != 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./app
@@ -183,6 +198,7 @@ jobs:
       # Scan Docker Image
       #####################################
       - name: Run Trivy vulnerability scanner
+        if: steps.meta.outputs.image_exists != 'true'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ steps.meta.outputs.image }}
@@ -192,6 +208,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy results
+        if: steps.meta.outputs.image_exists != 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
@@ -201,6 +218,7 @@ jobs:
       # Test Docker Image
       #####################################
       - name: Test Docker image
+        if: steps.meta.outputs.image_exists != 'true'
         run: |
           # Start container
           docker run -d --name test-app \
@@ -222,6 +240,7 @@ jobs:
       # Push to ECR
       #####################################
       - name: Push Docker image to ECR
+        if: steps.meta.outputs.image_exists != 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./app
