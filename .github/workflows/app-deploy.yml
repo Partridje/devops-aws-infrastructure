@@ -62,9 +62,9 @@ jobs:
             exit 1
           fi
 
-          # Check Auto Scaling Group
+          # Check Auto Scaling Group (search by name prefix)
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-            --query "AutoScalingGroups[?Tags[?Key=='Environment' && Value=='${ENV}'] && Tags[?Key=='Project' && Value=='${{ env.PROJECT_NAME }}']].AutoScalingGroupName" \
+            --query "AutoScalingGroups[?starts_with(AutoScalingGroupName, '${{ env.PROJECT_NAME }}-${ENV}-')].AutoScalingGroupName" \
             --output text | head -n1)
 
           if [ -z "${ASG_NAME}" ]; then
@@ -76,9 +76,9 @@ jobs:
           echo "✓ Auto Scaling Group exists: ${ASG_NAME}"
           echo "asg_name=${ASG_NAME}" >> $GITHUB_OUTPUT
 
-          # Check Application Load Balancer
+          # Check Application Load Balancer (search by name prefix)
           ALB_DNS=$(aws elbv2 describe-load-balancers \
-            --query "LoadBalancers[?Tags[?Key=='Environment' && Value=='${ENV}'] && Tags[?Key=='Project' && Value=='${{ env.PROJECT_NAME }}']].DNSName" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName, '${{ env.PROJECT_NAME }}-${ENV}-')].DNSName" \
             --output text | head -n1)
 
           if [ -z "${ALB_DNS}" ]; then
