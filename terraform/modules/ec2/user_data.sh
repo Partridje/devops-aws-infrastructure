@@ -212,7 +212,7 @@ docker run -d \
 DEPLOY_SCRIPT
 
   chmod +x /usr/local/bin/deploy-app.sh
-  echo "SSM_PARAMETER_NAME=${ssm_parameter_name}" >> /opt/application/.env
+  printf 'SSM_PARAMETER_NAME=%s\n' "${ssm_parameter_name}" >> /opt/application/.env
   cat > /etc/systemd/system/app-launcher.service <<'SYSTEMD_SERVICE'
 [Unit]
 Description=Application Launcher Service
