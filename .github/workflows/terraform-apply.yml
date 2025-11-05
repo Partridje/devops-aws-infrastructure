@@ -161,9 +161,9 @@ jobs:
             exit 1
           fi
 
-          # Check RDS exists and is available
+          # Check RDS exists and is available (search by name prefix)
           DB_STATUS=$(aws rds describe-db-instances \
-            --query "DBInstances[?Tags[?Key=='Environment' && Value=='${{ matrix.environment }}']].DBInstanceStatus" \
+            --query "DBInstances[?starts_with(DBInstanceIdentifier, 'demo-app-${{ matrix.environment }}-')].DBInstanceStatus" \
             --output text --region ${{ env.AWS_REGION }} | head -n1)
 
           echo "RDS Status: $DB_STATUS"
@@ -172,9 +172,9 @@ jobs:
             echo "::warning::RDS is not yet available (status: $DB_STATUS)"
           fi
 
-          # Check ASG exists
+          # Check ASG exists (search by name prefix)
           ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
-            --query "AutoScalingGroups[?Tags[?Key=='Environment' && Value=='${{ matrix.environment }}']].AutoScalingGroupName" \
+            --query "AutoScalingGroups[?starts_with(AutoScalingGroupName, 'demo-app-${{ matrix.environment }}-')].AutoScalingGroupName" \
             --output text --region ${{ env.AWS_REGION }} | head -n1)
 
           if [ -z "$ASG_NAME" ]; then
