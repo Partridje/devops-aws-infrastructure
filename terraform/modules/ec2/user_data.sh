@@ -164,9 +164,6 @@ INSTANCE_ID=$INSTANCE_ID
 INSTANCE_IP=$INSTANCE_IP
 AVAILABILITY_ZONE=$AZ
 
-# SSM Parameter for app version
-SSM_PARAMETER_NAME="${ssm_parameter_name}"
-
 # Log Configuration
 LOG_LEVEL=INFO
 LOG_FORMAT=json
