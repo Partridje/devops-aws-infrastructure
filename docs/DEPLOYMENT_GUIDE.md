@@ -326,6 +326,48 @@ If deployment fails, the workflow automatically cancels the instance refresh.
 
 ---
 
+## Complete Project Cleanup
+
+When you want to **completely remove the project** (including backend):
+
+### Step 1: Destroy Infrastructure
+
+```bash
+# Via GitHub Actions
+GitHub → Actions → Terraform Destroy → Run workflow (prod/dev)
+
+# Or locally
+make destroy ENV=prod
+make destroy ENV=dev
+```
+
+### Step 2: Cleanup Backend (Optional)
+
+**⚠️ WARNING**: This removes ALL Terraform state permanently!
+
+```bash
+./scripts/cleanup-terraform-backend.sh
+# Type 'DELETE' to confirm
+```
+
+This will remove:
+- S3 bucket with Terraform state
+- S3 bucket with logs
+- DynamoDB table for state locking
+
+**Why keep backend after destroy?**
+- Preserves state history
+- Allows infrastructure recreation
+- Prevents state drift issues
+- Required for multiple environments
+
+**When to cleanup backend?**
+- Project is being decommissioned
+- Moving to different backend
+- Complete fresh start needed
+
+---
+
 ## Next Steps
 
 - [Testing Guide](TESTING_GUIDE.md) - How to test your deployment
