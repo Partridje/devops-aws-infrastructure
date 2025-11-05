@@ -257,13 +257,6 @@ INSTANCE_ID=$INSTANCE_ID
 INSTANCE_IP=$INSTANCE_IP
 AVAILABILITY_ZONE=$AZ
 
-# Database Configuration (if available)
-DB_HOST="$${DB_HOST:-}"
-DB_PORT="$${DB_PORT:-5432}"
-DB_NAME="$${DB_NAME:-appdb}"
-DB_USER="$${DB_USER:-}"
-DB_PASSWORD="$${DB_PASSWORD:-}"
-
 # SSM Parameter for app version
 SSM_PARAMETER_NAME="${ssm_parameter_name}"
 
@@ -271,6 +264,19 @@ SSM_PARAMETER_NAME="${ssm_parameter_name}"
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 EOF
+
+# Append database configuration if available (using printf for safe escaping)
+if [ -n "$${DB_HOST:-}" ]; then
+  {
+    echo ""
+    echo "# Database Configuration"
+    printf 'DB_HOST=%s\n' "$${DB_HOST}"
+    printf 'DB_PORT=%s\n' "$${DB_PORT:-5432}"
+    printf 'DB_NAME=%s\n' "$${DB_NAME:-appdb}"
+    printf 'DB_USER=%s\n' "$${DB_USER}"
+    printf 'DB_PASSWORD=%s\n' "$${DB_PASSWORD}"
+  } >> /opt/application/.env
+fi
 
 #####################################
 # Create deployment script (if ECR URL provided)
