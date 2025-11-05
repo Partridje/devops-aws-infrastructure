@@ -287,8 +287,9 @@ if [ -n "${ecr_repository_url}" ]; then
   cat > /usr/local/bin/deploy-app.sh <<'DEPLOY_SCRIPT'
 #!/bin/bash
 set -e
-source /opt/application/.env
-SSM_PARAM="$SSM_PARAMETER_NAME"
+# Read only safe variables from .env (grep -v to exclude DB_PASSWORD)
+AWS_REGION=$(grep '^AWS_REGION=' /opt/application/.env | cut -d'=' -f2)
+SSM_PARAM=$(grep '^SSM_PARAMETER_NAME=' /opt/application/.env | cut -d'=' -f2)
 ECR_REPO="${ecr_repository_url}"
 APP_PORT="${application_port}"
 APP_VERSION=$(aws ssm get-parameter --name "$SSM_PARAM" --region "$AWS_REGION" --query 'Parameter.Value' --output text 2>/dev/null)
