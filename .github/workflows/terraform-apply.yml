@@ -107,6 +107,43 @@ jobs:
           retention-days: 30
 
       #####################################
+      # Check for concurrent deployments
+      #####################################
+      - name: Check for concurrent deployments
+        run: |
+          ENV="${{ matrix.environment }}"
+
+          echo "Checking for active instance refresh in ${ENV} environment..."
+
+          # Get ASG name for this environment
+          ASG_NAME=$(aws autoscaling describe-auto-scaling-groups \
+            --query "AutoScalingGroups[?starts_with(AutoScalingGroupName, 'demo-app-${ENV}-')].AutoScalingGroupName" \
+            --output text --region ${{ env.AWS_REGION }} | head -n1)
+
+          if [ -z "$ASG_NAME" ]; then
+            echo "No ASG found for environment ${ENV}. Skipping check (likely first deployment)."
+            exit 0
+          fi
+
+          echo "Found ASG: ${ASG_NAME}"
+
+          # Check if there's an active instance refresh
+          ACTIVE_REFRESH=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name "${ASG_NAME}" \
+            --query "InstanceRefreshes[?Status=='InProgress' || Status=='Pending'].Status" \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          if [ -n "$ACTIVE_REFRESH" ]; then
+            echo "::error::Instance Refresh is already in progress for ASG: ${ASG_NAME}"
+            echo "::error::Please wait for the current app deployment to complete before running infrastructure changes"
+            echo "::error::This prevents concurrent deployment conflicts and race conditions"
+            exit 1
+          fi
+
+          echo "✓ No active instance refresh found. Safe to proceed with infrastructure changes."
+
+      #####################################
       # Terraform Apply
       #####################################
       - name: Terraform Apply

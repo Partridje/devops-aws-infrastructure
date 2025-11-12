@@ -355,6 +355,31 @@ jobs:
           fi
 
       #####################################
+      # Check for concurrent deployments
+      #####################################
+      - name: Check for concurrent deployments
+        run: |
+          ASG_NAME="${{ needs.verify-infrastructure.outputs.asg_name }}"
+
+          echo "Checking for active instance refresh..."
+
+          # Check if there's an active instance refresh
+          ACTIVE_REFRESH=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name "${ASG_NAME}" \
+            --query "InstanceRefreshes[?Status=='InProgress' || Status=='Pending'].Status" \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+
+          if [ -n "$ACTIVE_REFRESH" ]; then
+            echo "::error::Instance Refresh is already in progress for ASG: ${ASG_NAME}"
+            echo "::error::Please wait for the current refresh to complete before starting a new deployment"
+            echo "::error::This prevents concurrent deployment conflicts"
+            exit 1
+          fi
+
+          echo "✓ No active instance refresh found. Safe to proceed."
+
+      #####################################
       # Trigger Instance Refresh (for new instances)
       #####################################
       - name: Start instance refresh

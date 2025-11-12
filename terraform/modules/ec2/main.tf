@@ -459,7 +459,7 @@ resource "aws_autoscaling_group" "main" {
   # Launch template
   launch_template {
     id      = aws_launch_template.main.id
-    version = "$Latest"
+    version = "$Default"
   }
 
   # Target group attachment
@@ -514,7 +514,8 @@ resource "aws_autoscaling_group" "main" {
     create_before_destroy = true
     ignore_changes = [
       desired_capacity,
-      target_group_arns
+      target_group_arns,
+      launch_template[0].version
     ]
   }
 
