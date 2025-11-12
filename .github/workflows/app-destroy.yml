@@ -141,12 +141,14 @@ jobs:
           echo "SSM Run Command initiated: ${COMMAND_ID}"
           echo "Waiting for containers to stop..."
 
-          # Wait for command to complete
-          aws ssm wait command-executed \
-            --command-id "${COMMAND_ID}" \
-            --instance-ids $INSTANCE_IDS \
-            --region ${{ env.AWS_REGION }} \
-            || echo "::warning::Some instances may have failed. Check SSM command output."
+          # Wait for command to complete on all instances
+          for instance in $INSTANCE_IDS; do
+            aws ssm wait command-executed \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "$instance" \
+              --region ${{ env.AWS_REGION }} \
+              || echo "::warning::Instance $instance may have failed. Check SSM command output."
+          done
 
           echo "✓ Application containers stopped on all instances"
 
@@ -183,12 +185,14 @@ jobs:
 
           echo "SSM Run Command initiated: ${COMMAND_ID}"
 
-          # Wait for command to complete
-          aws ssm wait command-executed \
-            --command-id "${COMMAND_ID}" \
-            --instance-ids $INSTANCE_IDS \
-            --region ${{ env.AWS_REGION }} \
-            || echo "::warning::Some instances may have failed"
+          # Wait for command to complete on all instances
+          for instance in $INSTANCE_IDS; do
+            aws ssm wait command-executed \
+              --command-id "${COMMAND_ID}" \
+              --instance-id "$instance" \
+              --region ${{ env.AWS_REGION }} \
+              || echo "::warning::Instance $instance may have failed"
+          done
 
           echo "✓ app-launcher service disabled on all instances"
 

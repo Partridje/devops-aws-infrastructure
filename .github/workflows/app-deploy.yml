@@ -344,12 +344,14 @@ jobs:
             echo "SSM Run Command initiated: ${COMMAND_ID}"
             echo "Waiting for deployment to complete..."
 
-            # Wait for command to complete
-            aws ssm wait command-executed \
-              --command-id "${COMMAND_ID}" \
-              --instance-ids $INSTANCE_IDS \
-              --region ${{ env.AWS_REGION }} \
-              || echo "WARNING: Some instances may have failed. Check SSM command output."
+            # Wait for command to complete on all instances
+            for instance in $INSTANCE_IDS; do
+              aws ssm wait command-executed \
+                --command-id "${COMMAND_ID}" \
+                --instance-id "$instance" \
+                --region ${{ env.AWS_REGION }} \
+                || echo "WARNING: Instance $instance may have failed. Check SSM command output."
+            done
 
             echo "✓ Deployment to existing instances completed"
           fi
