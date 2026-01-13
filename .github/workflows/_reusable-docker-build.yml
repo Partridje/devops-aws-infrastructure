@@ -1,0 +1,221 @@
+name: Reusable Docker Build and Push
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile_context:
+        description: 'Docker build context path (e.g., ./app)'
+        required: true
+        type: string
+      ecr_repository:
+        description: 'ECR repository URI'
+        required: true
+        type: string
+      image_tag:
+        description: 'Docker image tag'
+        required: true
+        type: string
+      aws_region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'eu-north-1'
+      enable_trivy_scan:
+        description: 'Enable Trivy security scanning'
+        required: false
+        type: boolean
+        default: true
+      enable_image_test:
+        description: 'Enable Docker image testing'
+        required: false
+        type: boolean
+        default: true
+      test_port:
+        description: 'Port to test the container on'
+        required: false
+        type: string
+        default: '5001'
+      test_health_endpoint:
+        description: 'Health check endpoint for testing'
+        required: false
+        type: string
+        default: '/health'
+      skip_if_exists:
+        description: 'Skip build if image already exists in ECR'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      AWS_ROLE_ARN:
+        description: 'AWS IAM role ARN for OIDC authentication'
+        required: true
+    outputs:
+      image:
+        description: 'Full Docker image path with tag'
+        value: ${{ jobs.build-and-push.outputs.image }}
+      image_digest:
+        description: 'Docker image digest (SHA256)'
+        value: ${{ jobs.build-and-push.outputs.digest }}
+      image_exists:
+        description: 'Whether the image already existed in ECR'
+        value: ${{ jobs.build-and-push.outputs.image_exists }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+      image_exists: ${{ steps.check-image.outputs.image_exists }}
+
+    steps:
+      #####################################
+      # Checkout Code
+      #####################################
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      #####################################
+      # Setup Docker Buildx
+      #####################################
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      #####################################
+      # Configure AWS Credentials
+      #####################################
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      #####################################
+      # Login to ECR
+      #####################################
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      #####################################
+      # Check if Image Exists
+      #####################################
+      - name: Check if image exists in ECR
+        id: check-image
+        run: |
+          ECR_REPO_NAME=$(echo "${{ inputs.ecr_repository }}" | cut -d'/' -f2)
+
+          if aws ecr describe-images \
+            --repository-name "${ECR_REPO_NAME}" \
+            --image-ids imageTag="${{ inputs.image_tag }}" \
+            --region ${{ inputs.aws_region }} > /dev/null 2>&1; then
+
+            echo "image_exists=true" >> $GITHUB_OUTPUT
+            echo "✓ Image already exists in ECR: ${{ inputs.ecr_repository }}:${{ inputs.image_tag }}"
+          else
+            echo "image_exists=false" >> $GITHUB_OUTPUT
+            echo "Image not found in ECR, will build and push"
+          fi
+
+      #####################################
+      # Generate Image Metadata
+      #####################################
+      - name: Generate image metadata
+        id: meta
+        run: |
+          IMAGE="${{ inputs.ecr_repository }}:${{ inputs.image_tag }}"
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+          echo "Docker image: ${IMAGE}"
+
+      #####################################
+      # Build Docker Image
+      #####################################
+      - name: Build Docker image
+        if: ${{ !inputs.skip_if_exists || steps.check-image.outputs.image_exists != 'true' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ inputs.dockerfile_context }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      #####################################
+      # Scan Docker Image
+      #####################################
+      - name: Run Trivy vulnerability scanner
+        if: ${{ inputs.enable_trivy_scan && (!inputs.skip_if_exists || steps.check-image.outputs.image_exists != 'true') }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Upload Trivy results
+        if: ${{ inputs.enable_trivy_scan && (!inputs.skip_if_exists || steps.check-image.outputs.image_exists != 'true') }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      #####################################
+      # Test Docker Image
+      #####################################
+      - name: Test Docker image
+        if: ${{ inputs.enable_image_test && (!inputs.skip_if_exists || steps.check-image.outputs.image_exists != 'true') }}
+        run: |
+          # Start container
+          docker run -d --name test-app \
+            -p ${{ inputs.test_port }}:${{ inputs.test_port }} \
+            -e DB_HOST=localhost \
+            -e ENVIRONMENT=test \
+            ${{ steps.meta.outputs.image }}
+
+          # Wait for app to start
+          echo "Waiting for container to start..."
+          sleep 10
+
+          # Test health endpoint
+          echo "Testing health endpoint at http://localhost:${{ inputs.test_port }}${{ inputs.test_health_endpoint }}"
+          curl -f http://localhost:${{ inputs.test_port }}${{ inputs.test_health_endpoint }} || exit 1
+
+          echo "✓ Container test passed"
+
+          # Stop container
+          docker stop test-app
+
+      #####################################
+      # Push to ECR
+      #####################################
+      - name: Push Docker image to ECR
+        id: push
+        if: ${{ !inputs.skip_if_exists || steps.check-image.outputs.image_exists != 'true' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ inputs.dockerfile_context }}
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      #####################################
+      # Output Summary
+      #####################################
+      - name: Build Summary
+        run: |
+          if [ "${{ steps.check-image.outputs.image_exists }}" = "true" ] && [ "${{ inputs.skip_if_exists }}" = "true" ]; then
+            echo "✓ Image already exists, skipped build"
+          else
+            echo "✓ Image built and pushed successfully"
+          fi
+          echo "Image: ${{ steps.meta.outputs.image }}"

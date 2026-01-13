@@ -105,163 +105,19 @@ jobs:
   build:
     name: Build and Push Docker Image
     needs: verify-infrastructure
-    runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.meta.outputs.image }}
-
-    steps:
-      #####################################
-      # Checkout Code
-      #####################################
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      #####################################
-      # Setup Docker Buildx
-      #####################################
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      #####################################
-      # Configure AWS Credentials
-      #####################################
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      #####################################
-      # Login to ECR
-      #####################################
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      #####################################
-      # Generate Image Tags
-      #####################################
-      - name: Generate image tags
-        id: meta
-        run: |
-          # Use ECR repository from infrastructure verification
-          ECR_REPO="${{ needs.verify-infrastructure.outputs.ecr_repository }}"
-          ECR_REPO_NAME=$(echo "${ECR_REPO}" | cut -d'/' -f2)
-
-          # Use provided image tag or default to commit SHA
-          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
-            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
-          else
-            IMAGE_TAG="${{ github.sha }}"
-          fi
-
-          # Build tags (only commit SHA, no 'latest')
-          TAGS="${ECR_REPO}:${IMAGE_TAG}"
-
-          # Check if image already exists in ECR
-          if aws ecr describe-images \
-            --repository-name "${ECR_REPO_NAME}" \
-            --image-ids imageTag="${IMAGE_TAG}" \
-            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-
-            echo "✓ Image already exists in ECR: ${ECR_REPO}:${IMAGE_TAG}"
-            echo "image_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Image not found in ECR, will build and push"
-            echo "image_exists=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-          echo "image=${ECR_REPO}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
-
-          echo "Docker image will be tagged as:"
-          echo "  - ${ECR_REPO}:${IMAGE_TAG}"
-
-      #####################################
-      # Build Docker Image
-      #####################################
-      - name: Build Docker image
-        if: steps.meta.outputs.image_exists != 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./app
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.revision=${{ github.sha }}
-
-      #####################################
-      # Scan Docker Image
-      #####################################
-      - name: Run Trivy vulnerability scanner
-        if: steps.meta.outputs.image_exists != 'true'
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ steps.meta.outputs.image }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-        continue-on-error: true
-
-      - name: Upload Trivy results
-        if: steps.meta.outputs.image_exists != 'true'
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-        continue-on-error: true
-
-      #####################################
-      # Test Docker Image
-      #####################################
-      - name: Test Docker image
-        if: steps.meta.outputs.image_exists != 'true'
-        run: |
-          # Start container
-          docker run -d --name test-app \
-            -p 5001:5001 \
-            -e DB_HOST=localhost \
-            -e ENVIRONMENT=test \
-            ${{ steps.meta.outputs.image }}
-
-          # Wait for app to start
-          sleep 10
-
-          # Test health endpoint
-          curl -f http://localhost:5001/health || exit 1
-
-          # Stop container
-          docker stop test-app
-
-      #####################################
-      # Push to ECR
-      #####################################
-      - name: Push Docker image to ECR
-        if: steps.meta.outputs.image_exists != 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./app
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            environment=${{ github.event.inputs.environment }}
-
-      #####################################
-      # Output Image Info
-      #####################################
-      - name: Image Info
-        run: |
-          echo "✓ Image pushed successfully!"
-          echo "Image: ${{ steps.meta.outputs.image }}"
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "image=${{ steps.meta.outputs.image }}" >> $GITHUB_OUTPUT
+    uses: ./.github/workflows/_reusable-docker-build.yml
+    with:
+      dockerfile_context: './app'
+      ecr_repository: ${{ needs.verify-infrastructure.outputs.ecr_repository }}
+      image_tag: ${{ github.event.inputs.image_tag || github.sha }}
+      aws_region: 'eu-north-1'
+      enable_trivy_scan: true
+      enable_image_test: true
+      test_port: '5001'
+      test_health_endpoint: '/health'
+      skip_if_exists: true
+    secrets:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
 
   deploy:
     name: Deploy to ${{ github.event.inputs.environment }}
@@ -293,7 +149,7 @@ jobs:
         run: |
           ENV="${{ github.event.inputs.environment }}"
           IMAGE_TAG="${{ needs.build.outputs.image }}"
-          IMAGE_TAG_ONLY=$(echo "$IMAGE_TAG" | cut -d':' -f2)
+          IMAGE_TAG_ONLY=$(echo "$IMAGE_TAG" | cut -d':' -f2-)
 
           # SSM Parameter name pattern
           SSM_PARAM="/${{ env.PROJECT_NAME }}/${ENV}/app/version"
