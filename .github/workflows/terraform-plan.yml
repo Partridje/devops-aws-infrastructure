@@ -163,6 +163,44 @@ jobs:
         continue-on-error: true
 
       #####################################
+      # AWS Pricing API Cost Estimation
+      #####################################
+      - name: Setup Python
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install boto3
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        run: pip install boto3
+
+      - name: Generate Terraform Plan JSON
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          terraform show -json tfplan > tfplan.json
+
+      - name: Estimate AWS Costs
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        id: aws-cost
+        working-directory: terraform/environments/${{ matrix.environment }}
+        run: |
+          chmod +x ../../../scripts/aws-cost-estimate.py
+          python3 ../../../scripts/aws-cost-estimate.py tfplan.json ${{ env.AWS_REGION }} > cost-estimate.txt
+          cat cost-estimate.txt
+        continue-on-error: true
+
+      - name: Save cost estimate
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cost-estimate-${{ matrix.environment }}
+          path: terraform/environments/${{ matrix.environment }}/cost-estimate.txt
+          retention-days: 5
+        continue-on-error: true
+
+      #####################################
       # Comment on PR
       #####################################
       - name: Update Pull Request
